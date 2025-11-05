@@ -104,5 +104,4 @@ fn assert_expected(cpu: &CPU, test: &Value) {
 	// TODO: Add cycle tests
 	let expected_cycle_count = test["cycles"].as_array().unwrap().len();
 	assert_eq!(cpu.timer.cycles as usize, expected_cycle_count, "Cycle count mismatch");
-	println!("CPU total cycles {} Expected {}", cpu.timer.cycles, expected_cycle_count);
 }

@@ -1305,7 +1305,7 @@ impl CPU {
 		}
 
 		// IME not set and interrupts are pending
-		else  {
+		else {
 			// TODO: Handle halt bug properly
 			self.halt_bug_active = true;
 		}

@@ -37,7 +37,6 @@ impl Timer {
 
 		self.cycles_since_div += cycle_count as u16;
 		self.cycles_since_tima += cycle_count as u16;
-		println!("{}, {}, {}", self.cycles_since_div, self.cycles_since_tima, Timer::cycles_to_tma(ram));
 
 		// DIV is always incremented at the cycle interval
 		if self.cycles_since_div >= M_CYCLES_TO_DIV_INCREMENT {
@@ -47,7 +46,7 @@ impl Timer {
 
 		// TIMA is incremented based on the TMA register
 		let cycles_to_tma = Timer::cycles_to_tma(ram);
-		if self.cycles_since_tima >= cycles_to_tma {
+		if self.cycles_since_tima >= cycles_to_tma && Timer::enabled(ram) {
 			self.cycles_since_tima -= cycles_to_tma;
 
 			let (res, overflow) = ram[TIMA_ADDRESS].overflowing_add(1u8);

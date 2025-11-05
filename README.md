@@ -1,5 +1,5 @@
 # Webboy
-A cycle in-accurate Gameboy Emulator written in Rust. 
+A cycle inaccurate Gameboy Emulator written in Rust. 
 
 ### Out of scope
 - Gameboy Link cable 
