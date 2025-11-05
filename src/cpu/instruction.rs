@@ -108,6 +108,9 @@ impl CPU {
 			self.print_cpu();
 		}
 
+		let cycle_count = self.handle_interrupts();
+		self.timer.increment_cycle(&mut self.ram, cycle_count);
+
 		let operation = self.get_operation();
 		let cycle_count = self.run_operation(operation);
 		self.timer.increment_cycle(&mut self.ram, cycle_count);
@@ -232,7 +235,7 @@ impl CPU {
 			0o340 => CPU::ldh_n16_a,
 			0o342 => CPU::ldh_c_a,
 			0o352 => CPU::ld_n16_a,
-			0o360 => CPU::ldh_a_n16,
+			0o360 => CPU::ldh_a_a16,
 			0o362 => CPU::ldh_a_c,
 			0o372 => CPU::ld_a_n16,
 			_ => panic!("Unhandled instruction: {instruction}"),
@@ -755,7 +758,7 @@ impl CPU {
 		4
 	}
 
-	fn ldh_a_n16(&mut self, _: &Instruction) -> CycleCount {
+	fn ldh_a_a16(&mut self, _: &Instruction) -> CycleCount {
 		let location = self.read_byte();
 		let location = 0xFF00 + location as u16;
 		self.registers.a = self.ram[location as usize];
@@ -1347,20 +1350,23 @@ impl CPU {
 		1
 	}
 
-	fn handle_interrupt(&mut self) {
+	fn handle_interrupts(&mut self) -> CycleCount {
 		if self.ime != Ime::Set {
-			return;
+			return 0;
 		}
 
 		let pending_interrupt = self.ram.pending_interrupt();
 
 		if let Some(interrupt) = pending_interrupt {
+			eprintln!("Handling interrupt: {:?} while the pc is at {:X}", interrupt, self.registers.pc);
 			self.stack_push_16(self.registers.pc);
 			self.registers.pc = interrupt.handler_address();
 			self.ime = Ime::Off;
 			self.ram.clear_interrupt(interrupt);
+			5
+		} else {
+			0
 		}
-
 	}
 }
 

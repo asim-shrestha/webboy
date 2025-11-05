@@ -31,7 +31,7 @@ impl Timer {
 	pub fn increment_cycle(&mut self, ram: &mut Ram, cycle_count: u8) {
 		self.cycles = self.cycles.wrapping_add(cycle_count as u128);
 
-		if cycle_count == 0 || cycle_count > 6 {
+		if cycle_count > 6 {
 			panic!("timer: Invalid cycle count increase of {}", cycle_count);
 		}
 
@@ -127,7 +127,7 @@ mod test {
 		};
 
 		let mut ram = Ram::new();
-		ram[TAC_ADDRESS] = 0b0000_0101;
+		ram[TAC_ADDRESS] = 0b0000_0001;
 		ram[TMA_ADDRESS] = 70;
 
 		timer.increment_cycle(&mut ram, 1);

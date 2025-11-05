@@ -24,7 +24,10 @@ https://github.com/c-sp/game-boy-test-roms?tab=readme-ov-file
 
 ## Interrupt handling
 Interrupt enabling is all set manually through load instructions via the CPU.
+blarggs second test is good for this. First step is to pass their first test
+which just ensures the timer interrupt is correctly handled. 
 
+Second step is to pass their vblank interrupt test
 
 
 #
