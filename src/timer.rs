@@ -35,8 +35,9 @@ impl Timer {
 			panic!("timer: Invalid cycle count increase of {}", cycle_count);
 		}
 
+		let tima_enabled = Timer::enabled(ram);
 		self.cycles_since_div += cycle_count as u16;
-		self.cycles_since_tima += cycle_count as u16;
+		self.cycles_since_tima += if tima_enabled { cycle_count as u16 } else { 0 };
 
 		// DIV is always incremented at the cycle interval
 		if self.cycles_since_div >= M_CYCLES_TO_DIV_INCREMENT {
@@ -115,5 +116,23 @@ mod test {
 		assert_eq!(timer.cycles_since_tima, 0, "TIMA Cycles should have been reset");
 		assert_eq!(timer.cycles_since_div, 1, "TIMA Cycles should have been reset");
 		assert_eq!(ram[0xFF0F], 0b0000_0100, "The timer interrupt request should be set");
+	}
+
+	#[test]
+	fn test_disabled() {
+		let mut timer = Timer {
+			cycles: 0,
+			cycles_since_div: 0,
+			cycles_since_tima: 0,
+		};
+
+		let mut ram = Ram::new();
+		ram[TAC_ADDRESS] = 0b0000_0101;
+		ram[TMA_ADDRESS] = 70;
+
+		timer.increment_cycle(&mut ram, 1);
+		assert_eq!(timer.cycles, 1, "Value should not have been incremented");
+		assert_eq!(timer.cycles_since_div, 1, "Value should not have been incremented");
+		assert_eq!(timer.cycles_since_tima, 0, "Value should not have been incremented");
 	}
 }
