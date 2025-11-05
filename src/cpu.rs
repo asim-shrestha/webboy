@@ -22,7 +22,7 @@ enum Mode {
 
 pub struct CPU {
 	pub registers: Registers,
-	ram: Ram,
+	pub ram: Ram,
 	ime: Ime,
 	cycle_count: u64,
 	mode: Mode,
