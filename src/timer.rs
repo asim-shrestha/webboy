@@ -87,7 +87,7 @@ mod test {
 		};
 
 		let mut ram = Ram::new();
-		ram[TAC_ADDRESS] = 0b01;
+		ram[TAC_ADDRESS] = 0b0000_0101;
 		ram[TMA_ADDRESS] = 70;
 
 		timer.increment_cycle(&mut ram, 1);
