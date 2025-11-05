@@ -13,11 +13,10 @@ fn main() {
     };
 
     let rom: Vec<u8> = load_rom(file_name);
-    let mut ram = Ram::new();
-    ram[0xFF44] = 0x90; // Set LY to simulate some VBlank progress
-    ram.load_rom(&rom);
+    let mut cpu = CPU::new();
+    cpu.ram[0xFF44] = 0x90; // Set LY to simulate some VBlank progress
+    cpu.ram.load_rom(&rom);
 
-    let mut cpu = CPU::new_with_ram(ram);
     cpu.boot();
 
     let max_log_test_length = 7427500;

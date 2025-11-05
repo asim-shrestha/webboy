@@ -51,7 +51,7 @@ fn run_test(test: &Value) {
 	cpu.print_cpu();
 
 	// Validate
-	assert_expected(&cpu.registers, &cpu.ram, &test["final"]);
+	assert_expected(&cpu, &test);
 }
 
 fn set_registers(registers: &mut Registers, initial_values: &Value) {
@@ -71,29 +71,30 @@ fn set_ram(ram: &mut Ram, initial_values: &Value) {
 	for ram_array in initial_values["ram"].as_array().unwrap() {
 		let array_values = ram_array.as_array().unwrap();
 		ram[array_values[0].as_u64().unwrap() as usize] = array_values[1].as_u64().unwrap() as u8;
-		// println!("Setting RAM[0x{:04X}] = 0x{:02X}", array_values[0].as_u64().unwrap() as usize, array_values[1].as_u64().unwrap() as u8);
 	}
 }
 
-fn assert_expected(registers: &Registers, ram: &Ram, final_values: &Value) {
+fn assert_expected(cpu: &CPU, test: &Value) {
+	let final_values = &test["final"];
+
 	// Test registers
-	assert_eq!(registers.a, final_values["a"].as_u64().unwrap() as u8, "Register A mismatch");
-	assert_eq!(registers.b, final_values["b"].as_u64().unwrap() as u8, "Register B mismatch");
-	assert_eq!(registers.c, final_values["c"].as_u64().unwrap() as u8, "Register C mismatch");
-	assert_eq!(registers.d, final_values["d"].as_u64().unwrap() as u8, "Register D mismatch");
-	assert_eq!(registers.e, final_values["e"].as_u64().unwrap() as u8, "Register E mismatch");
-	assert_eq!(registers.f, final_values["f"].as_u64().unwrap() as u8, "Register F mismatch");
-	assert_eq!(registers.h, final_values["h"].as_u64().unwrap() as u8, "Register H mismatch");
-	assert_eq!(registers.l, final_values["l"].as_u64().unwrap() as u8, "Register L mismatch");
-	assert_eq!(registers.pc, (final_values["pc"].as_u64().unwrap() - 1) as u16, "PC mismatch");
-	assert_eq!(registers.get_sp(), final_values["sp"].as_u64().unwrap() as u16, "SP mismatch");
+	assert_eq!(cpu.registers.a, final_values["a"].as_u64().unwrap() as u8, "Register A mismatch");
+	assert_eq!(cpu.registers.b, final_values["b"].as_u64().unwrap() as u8, "Register B mismatch");
+	assert_eq!(cpu.registers.c, final_values["c"].as_u64().unwrap() as u8, "Register C mismatch");
+	assert_eq!(cpu.registers.d, final_values["d"].as_u64().unwrap() as u8, "Register D mismatch");
+	assert_eq!(cpu.registers.e, final_values["e"].as_u64().unwrap() as u8, "Register E mismatch");
+	assert_eq!(cpu.registers.f, final_values["f"].as_u64().unwrap() as u8, "Register F mismatch");
+	assert_eq!(cpu.registers.h, final_values["h"].as_u64().unwrap() as u8, "Register H mismatch");
+	assert_eq!(cpu.registers.l, final_values["l"].as_u64().unwrap() as u8, "Register L mismatch");
+	assert_eq!(cpu.registers.pc, (final_values["pc"].as_u64().unwrap() - 1) as u16, "PC mismatch");
+	assert_eq!(cpu.registers.get_sp(), final_values["sp"].as_u64().unwrap() as u16, "SP mismatch");
 
 	// Test ram
 	let final_ram = &final_values["ram"];
 	for ram_array in final_ram.as_array().unwrap() {
 		let array_values = ram_array.as_array().unwrap();
 		assert_eq!(
-			ram[array_values[0].as_u64().unwrap() as usize],
+			cpu.ram[array_values[0].as_u64().unwrap() as usize],
 			array_values[1].as_u64().unwrap() as u8,
 			"RAM value mismatch at address 0x{:04X}", array_values[0].as_u64().unwrap() as usize
 		);
@@ -101,4 +102,7 @@ fn assert_expected(registers: &Registers, ram: &Ram, final_values: &Value) {
 
 	// Test cycles
 	// TODO: Add cycle tests
+	let expected_cycle_count = test["cycles"].as_array().unwrap().len();
+	assert_eq!(cpu.timer.cycles as usize, expected_cycle_count, "Cycle count mismatch");
+	println!("CPU total cycles {} Expected {}", cpu.timer.cycles, expected_cycle_count);
 }
