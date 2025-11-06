@@ -15,6 +15,8 @@ pub struct Timer {
 	cycles_since_tima: u16,
 }
 
+// TODO: Handle writing to DIV register (resets to 0)
+// TODO: Handle edge cases with TIMA increments and writes
 impl Timer {
 	pub fn new() -> Self {
 		Timer {
