@@ -1313,7 +1313,7 @@ impl CPU {
 			self.halt_bug_active = true;
 		}
 
-		0
+		1
 	}
 
 	fn stop(&mut self, _: &Instruction) -> CycleCount {
@@ -1321,7 +1321,7 @@ impl CPU {
 		self.mode = Mode::VeryLowPower;
 		// TODO: Reset DIV register
 
-		0
+		1
 	}
 
 	fn daa(&mut self, _: &Instruction) -> CycleCount {
@@ -1361,6 +1361,7 @@ impl CPU {
 			eprintln!("Handling interrupt: {:?} while the pc is at {:X}", interrupt, self.registers.pc);
 			self.stack_push_16(self.registers.pc);
 			self.registers.pc = interrupt.handler_address();
+			self.mode = Mode::NormalSpeed;
 			self.ime = Ime::Off;
 			self.ram.clear_interrupt(interrupt);
 			5

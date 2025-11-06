@@ -61,7 +61,7 @@ impl Timer {
 		}
 	}
 
-	pub fn cycles_to_tma(ram: &mut Ram) -> u16 {
+	pub fn cycles_to_tma(ram: &Ram) -> u16 {
 		let tac = ram[TAC_ADDRESS];
 		let control_bits = tac & 0b0000_0011;
 
