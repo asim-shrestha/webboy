@@ -29,14 +29,13 @@ impl Timer {
 	}
 
 	pub fn increment_cycle(&mut self, ram: &mut Ram, cycle_count: u8) {
-		self.cycles = self.cycles.wrapping_add(cycle_count as u128);
-
 		if cycle_count > 6 {
 			panic!("timer: Invalid cycle count increase of {}", cycle_count);
 		}
 
-		let tima_enabled = Timer::enabled(ram);
+		self.cycles = self.cycles.wrapping_add(cycle_count as u128);
 		self.cycles_since_div += cycle_count as u16;
+		let tima_enabled = Timer::enabled(ram);
 		self.cycles_since_tima += if tima_enabled { cycle_count as u16 } else { 0 };
 
 		// DIV is always incremented at the cycle interval
