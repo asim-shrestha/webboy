@@ -1,12 +1,13 @@
 use std::ptr::fn_addr_eq;
-use crate::ram::Interrupt;
+use crate::timer::Timer;
 use super::register::{Flag, Registers};
 use super::{carry, Ime};
 use super::super::ram::{Ram, RamOperations};
 use super::{CPU, Mode};
 
 type Instruction = u8;
-type InstructionHandler = fn(&mut CPU, instruction: &Instruction) -> ();
+type CycleCount = u8;
+type InstructionHandler = fn(&mut CPU, instruction: &Instruction) -> CycleCount;
 
 trait InstructionOps {
 	fn first_u3(&self) -> u8;
@@ -14,8 +15,6 @@ trait InstructionOps {
 	fn last_u3(&self) -> u8;
 	fn interleaved_r16(&self, is_zero_indexed: bool) -> u8;
 }
-
-type CycleCount = u8;
 
 impl InstructionOps for Instruction {
 	fn first_u3(&self) -> u8 {
@@ -50,19 +49,8 @@ impl CPU {
 		CPU {
 			registers: Registers::new(),
 			ram: Ram::new(),
+			timer: Timer::new(),
 			ime: Ime::Off,
-			cycle_count: 0,
-			mode: Mode::NormalSpeed,
-			halt_bug_active: false,
-		}
-	}
-
-	pub fn new_with_ram(ram: Ram) -> Self {
-		CPU {
-			registers: Registers::new(),
-			ram,
-			ime: Ime::Off,
-			cycle_count: 0,
 			mode: Mode::NormalSpeed,
 			halt_bug_active: false,
 		}
@@ -120,8 +108,12 @@ impl CPU {
 			self.print_cpu();
 		}
 
+		let cycle_count = self.handle_interrupts();
+		self.timer.increment_cycle(&mut self.ram, cycle_count);
+
 		let operation = self.get_operation();
-		self.run_operation(operation);
+		let cycle_count = self.run_operation(operation);
+		self.timer.increment_cycle(&mut self.ram, cycle_count);
 	}
 
 	fn get_operation(&mut self) -> (Instruction, InstructionHandler) {
@@ -243,7 +235,7 @@ impl CPU {
 			0o340 => CPU::ldh_n16_a,
 			0o342 => CPU::ldh_c_a,
 			0o352 => CPU::ld_n16_a,
-			0o360 => CPU::ldh_a_n16,
+			0o360 => CPU::ldh_a_a16,
 			0o362 => CPU::ldh_a_c,
 			0o372 => CPU::ld_a_n16,
 			_ => panic!("Unhandled instruction: {instruction}"),
@@ -252,14 +244,16 @@ impl CPU {
 		(instruction, function)
 	}
 
-	fn run_operation(&mut self, data: (Instruction, InstructionHandler)) {
+	fn run_operation(&mut self, data: (Instruction, InstructionHandler)) -> CycleCount {
 		let (instruction, op) = data;
-		op(self, &instruction);
+		let cycles = op(self, &instruction);
 
 		// ime flag setting has a one instruction delay
 		if !fn_addr_eq(op, CPU::ei as InstructionHandler) && self.ime == Ime::ToSet {
 			self.ime = Ime::Set;
 		}
+
+		cycles
 	}
 
 	fn get_cb_operation(&mut self) -> (Instruction, InstructionHandler) {
@@ -294,36 +288,50 @@ impl CPU {
 		(instruction, op)
 	}
 
-	fn no_op(&mut self, _: &Instruction) {}
+	fn no_op(&mut self, _: &Instruction) -> CycleCount {
+		1
+	}
 
-	fn add_a_r8(&mut self, instruction: &Instruction) {
+	fn add_a_r8(&mut self, instruction: &Instruction) -> CycleCount {
 		let src = *self.registers.get_r8(instruction.last_u3());
 		self.alu_add_a(src, false);
+
+		1
 	}
 
-	fn add_a_hl(&mut self, _: &Instruction) {
+	fn add_a_hl(&mut self, _: &Instruction) -> CycleCount {
 		let src = self.ram[self.registers.get_hl() as usize];
 		self.alu_add_a(src, false);
+
+		2
 	}
 
-	fn add_a_n8(&mut self, _: &Instruction) {
+	fn add_a_n8(&mut self, _: &Instruction) -> CycleCount {
 		let src = self.read_byte();
 		self.alu_add_a(src, false);
+
+		2
 	}
 
-	fn addc_a_r8(&mut self, instruction: &Instruction) {
+	fn addc_a_r8(&mut self, instruction: &Instruction) -> CycleCount {
 		let src = *self.registers.get_r8(instruction.last_u3());
 		self.alu_add_a(src, true);
+
+		1
 	}
 
-	fn addc_a_hl(&mut self, _: &Instruction) {
+	fn addc_a_hl(&mut self, _: &Instruction) -> CycleCount {
 		let src = self.ram[self.registers.get_hl() as usize];
 		self.alu_add_a(src, true);
+
+		2
 	}
 
-	fn addc_a_n8(&mut self, _: &Instruction) {
+	fn addc_a_n8(&mut self, _: &Instruction) -> CycleCount {
 		let src = self.read_byte();
 		self.alu_add_a(src, true);
+
+		2
 	}
 
 	fn alu_add_a(&mut self, value: u8, include_carry: bool) {
@@ -343,7 +351,7 @@ impl CPU {
 		self.registers.set_flag(Flag::Carry, overflowed_without_carry || overflowed);
 	}
 
-	fn add_hl_r16(&mut self, instruction: &Instruction) {
+	fn add_hl_r16(&mut self, instruction: &Instruction) -> CycleCount {
 		let r16 = self.registers.get_r16(instruction.interleaved_r16(false));
 		let prev = self.registers.get_hl();
 		let overflow_11 = (prev & 0x0FFF) + (r16 & 0x0FFF) > 0x0FFF;
@@ -353,36 +361,50 @@ impl CPU {
 		self.registers.set_flag(Flag::Subtraction, false);
 		self.registers.set_flag(Flag::HalfCarry, overflow_11);
 		self.registers.set_flag(Flag::Carry, overflow_15);
+
+		2
 	}
 
-	fn sub_a_r8(&mut self, instruction: &Instruction) {
+	fn sub_a_r8(&mut self, instruction: &Instruction) -> CycleCount {
 		let src = *self.registers.get_r8(instruction.last_u3());
 		self.alu_sub_a(src, false);
+
+		1
 	}
 
-	fn sub_a_hl(&mut self, _: &Instruction) {
+	fn sub_a_hl(&mut self, _: &Instruction) -> CycleCount {
 		let src = self.ram[self.registers.get_hl() as usize];
 		self.alu_sub_a(src, false);
+
+		2
 	}
 
-	fn sub_a_n8(&mut self, _: &Instruction) {
+	fn sub_a_n8(&mut self, _: &Instruction) -> CycleCount {
 		let src = self.read_byte();
 		self.alu_sub_a(src, false);
+
+		2
 	}
 
-	fn subc_a_r8(&mut self, instruction: &Instruction) {
+	fn subc_a_r8(&mut self, instruction: &Instruction) -> CycleCount {
 		let src = *self.registers.get_r8(instruction.last_u3());
 		self.alu_sub_a(src, true);
+
+		1
 	}
 
-	fn subc_a_hl(&mut self, _: &Instruction) {
+	fn subc_a_hl(&mut self, _: &Instruction) -> CycleCount {
 		let src = self.ram[self.registers.get_hl() as usize];
 		self.alu_sub_a(src, true);
+
+		2
 	}
 
-	fn subc_a_n8(&mut self, _: &Instruction) {
+	fn subc_a_n8(&mut self, _: &Instruction) -> CycleCount {
 		let src = self.read_byte();
 		self.alu_sub_a(src, true);
+
+		2
 	}
 
 	fn alu_sub_a(&mut self, value: u8, include_borrow: bool) {
@@ -402,25 +424,33 @@ impl CPU {
 		self.registers.set_flag(Flag::Carry, overflowed_without_borrow || overflowed);
 	}
 
-	fn cpl(&mut self, _: &Instruction) {
+	fn cpl(&mut self, _: &Instruction) -> CycleCount {
 		self.registers.a = !self.registers.a;
 		self.registers.set_flag(Flag::Subtraction, true);
 		self.registers.set_flag(Flag::HalfCarry, true);
+
+		1
 	}
 
-	fn and_a_r8(&mut self, instruction: &Instruction) {
+	fn and_a_r8(&mut self, instruction: &Instruction) -> CycleCount {
 		let src = *self.registers.get_r8(instruction.last_u3());
 		self.alu_and_a(src);
+
+		1
 	}
 
-	fn and_a_hl(&mut self, _: &Instruction) {
+	fn and_a_hl(&mut self, _: &Instruction) -> CycleCount {
 		let src = self.ram[self.registers.get_hl() as usize];
 		self.alu_and_a(src);
+
+		2
 	}
 
-	fn and_a_n8(&mut self, _: &Instruction) {
+	fn and_a_n8(&mut self, _: &Instruction) -> CycleCount {
 		let src = self.read_byte();
 		self.alu_and_a(src);
+
+		2
 	}
 
 	fn alu_and_a(&mut self, value: u8) {
@@ -432,19 +462,25 @@ impl CPU {
 		self.registers.set_flag(Flag::Carry, false);
 	}
 
-	fn xor_a_r8(&mut self, instruction: &Instruction) {
+	fn xor_a_r8(&mut self, instruction: &Instruction) -> CycleCount {
 		let src = *self.registers.get_r8(instruction.last_u3());
 		self.alu_xor_a(src);
+
+		1
 	}
 
-	fn xor_a_hl(&mut self, _: &Instruction) {
+	fn xor_a_hl(&mut self, _: &Instruction) -> CycleCount {
 		let src = self.ram[self.registers.get_hl() as usize];
 		self.alu_xor_a(src);
+
+		2
 	}
 
-	fn xor_a_n8(&mut self, _: &Instruction) {
+	fn xor_a_n8(&mut self, _: &Instruction) -> CycleCount {
 		let src = self.read_byte();
 		self.alu_xor_a(src);
+
+		2
 	}
 
 	fn alu_xor_a(&mut self, value: u8) {
@@ -456,19 +492,25 @@ impl CPU {
 		self.registers.set_flag(Flag::Carry, false);
 	}
 
-	fn or_a_r8(&mut self, instruction: &Instruction) {
+	fn or_a_r8(&mut self, instruction: &Instruction) -> CycleCount {
 		let src = *self.registers.get_r8(instruction.last_u3());
 		self.alu_or_a(src);
+
+		1
 	}
 
-	fn or_a_hl(&mut self, _: &Instruction) {
+	fn or_a_hl(&mut self, _: &Instruction) -> CycleCount {
 		let src = self.ram[self.registers.get_hl() as usize];
 		self.alu_or_a(src);
+
+		2
 	}
 
-	fn or_a_n8(&mut self, _: &Instruction) {
+	fn or_a_n8(&mut self, _: &Instruction) -> CycleCount {
 		let src = self.read_byte();
 		self.alu_or_a(src);
+
+		2
 	}
 
 	fn alu_or_a(&mut self, value: u8) {
@@ -480,19 +522,25 @@ impl CPU {
 		self.registers.set_flag(Flag::Carry, false);
 	}
 
-	fn cp_a_r8(&mut self, instruction: &Instruction) {
+	fn cp_a_r8(&mut self, instruction: &Instruction) -> CycleCount {
 		let value = *self.registers.get_r8(instruction.last_u3());
 		self.alu_cp_a(value);
+
+		1
 	}
 
-	fn cp_a_hl(&mut self, _: &Instruction) {
+	fn cp_a_hl(&mut self, _: &Instruction) -> CycleCount {
 		let value = self.ram[self.registers.get_hl() as usize];
 		self.alu_cp_a(value);
+
+		2
 	}
 
-	fn cp_a_n8(&mut self, _: &Instruction) {
+	fn cp_a_n8(&mut self, _: &Instruction) -> CycleCount {
 		let value = self.read_byte();
 		self.alu_cp_a(value);
+
+		2
 	}
 
 	fn alu_cp_a(&mut self, value: u8) {
@@ -504,7 +552,7 @@ impl CPU {
 		self.registers.set_flag(Flag::Carry, value > self.registers.a);
 	}
 
-	fn inc_r8(&mut self, instruction: &Instruction) {
+	fn inc_r8(&mut self, instruction: &Instruction) -> CycleCount {
 		let register = self.registers.get_r8(instruction.middle_u3());
 		let prev = *register;
 		let (res, _) = register.overflowing_add(1);
@@ -513,9 +561,11 @@ impl CPU {
 		self.registers.set_flag(Flag::Zero, res == 0);
 		self.registers.set_flag(Flag::Subtraction, false);
 		self.registers.set_flag(Flag::HalfCarry, carry::is_half_carry(prev, 1));
+
+		1
 	}
 
-	fn inc_hl(&mut self, _: &Instruction) {
+	fn inc_hl(&mut self, _: &Instruction) -> CycleCount {
 		let location = self.registers.get_hl();
 		let byte = &mut self.ram[location as usize];
 
@@ -526,16 +576,20 @@ impl CPU {
 		self.registers.set_flag(Flag::Zero, res == 0);
 		self.registers.set_flag(Flag::Subtraction, false);
 		self.registers.set_flag(Flag::HalfCarry, carry::is_half_carry(prev, 1));
+
+		3
 	}
 
-	fn inc_r16(&mut self, instruction: &Instruction) {
+	fn inc_r16(&mut self, instruction: &Instruction) -> CycleCount {
 		let index = instruction.interleaved_r16(true);
 		let r16 = self.registers.get_r16(index);
 		let (res, _) = r16.overflowing_add(1);
 		self.registers.set_r16(index, res);
+
+		2
 	}
 
-	fn dec_r8(&mut self, instruction: &Instruction) {
+	fn dec_r8(&mut self, instruction: &Instruction) -> CycleCount {
 		let register = self.registers.get_r8(instruction.middle_u3());
 		let prev = *register;
 		let (res, _) = register.overflowing_sub(1);
@@ -544,9 +598,11 @@ impl CPU {
 		self.registers.set_flag(Flag::Zero, res == 0);
 		self.registers.set_flag(Flag::Subtraction, true);
 		self.registers.set_flag(Flag::HalfCarry, carry::is_half_borrow(prev, 1));
+
+		1
 	}
 
-	fn dec_hl(&mut self, _: &Instruction) {
+	fn dec_hl(&mut self, _: &Instruction) -> CycleCount {
 		let location = self.registers.get_hl();
 		let byte = &mut self.ram[location as usize];
 
@@ -557,37 +613,47 @@ impl CPU {
 		self.registers.set_flag(Flag::Zero, res == 0);
 		self.registers.set_flag(Flag::Subtraction, true);
 		self.registers.set_flag(Flag::HalfCarry, carry::is_half_borrow(prev, 1));
+
+		3
 	}
 
-	fn dec_r16(&mut self, instruction: &Instruction) {
+	fn dec_r16(&mut self, instruction: &Instruction) -> CycleCount {
 		let index = instruction.interleaved_r16(false);
 		let r16 = self.registers.get_r16(index);
 		let (res, _) = r16.overflowing_sub(1);
 		self.registers.set_r16(index, res);
+
+		2
 	}
 
-	fn ld_r8_r8(&mut self, instruction: &Instruction) {
+	fn ld_r8_r8(&mut self, instruction: &Instruction) -> CycleCount {
 		let value_to_load = *self.registers.get_r8(instruction.last_u3());
 		let register = self.registers.get_r8(instruction.middle_u3());
 
 		*register = value_to_load;
+
+		1
 	}
 
-	fn ld_r8_n8(&mut self, instruction: &Instruction) {
+	fn ld_r8_n8(&mut self, instruction: &Instruction) -> CycleCount {
 		let value_to_load = self.read_byte();
 		let register = self.registers.get_r8(instruction.middle_u3());
 
 		*register = value_to_load;
+
+		2
 	}
 
 
-	fn ld_r16_n16(&mut self, instruction: &Instruction) {
+	fn ld_r16_n16(&mut self, instruction: &Instruction) -> CycleCount {
 		let value_to_load = self.read_two_bytes();
 		let location = instruction.interleaved_r16(true);
 		self.registers.set_r16(location, value_to_load);
+
+		3
 	}
 
-	fn ld_hl_sp_plus_e8(&mut self, _: &Instruction) {
+	fn ld_hl_sp_plus_e8(&mut self, _: &Instruction) -> CycleCount {
 		let e8 = self.read_byte() as i8;
 		let sp = self.registers.get_sp();
 
@@ -601,131 +667,173 @@ impl CPU {
 		self.registers.set_flag(Flag::Subtraction, false);
 		self.registers.set_flag(Flag::HalfCarry, half_carried);
 		self.registers.set_flag(Flag::Carry, overflowed);
+
+		3
 	}
 
-	fn ld_hl_r8(&mut self, instruction: &Instruction) {
+	fn ld_hl_r8(&mut self, instruction: &Instruction) -> CycleCount {
 		let value_to_load = *self.registers.get_r8(instruction.last_u3());
 		let location = self.registers.get_hl();
 		self.ram[location as usize] = value_to_load;
+
+		2
 	}
 
-	fn ld_hl_n8(&mut self, _: &Instruction) {
+	fn ld_hl_n8(&mut self, _: &Instruction) -> CycleCount {
 		let value_to_load = self.read_byte();
 		let location = self.registers.get_hl();
 		self.ram[location as usize] = value_to_load;
+
+		3
 	}
 
-	fn ld_sp_hl(&mut self, _: &Instruction) {
+	fn ld_sp_hl(&mut self, _: &Instruction) -> CycleCount {
 		let hl = self.registers.get_hl();
 		self.registers.set_sp(hl);
+
+		2
 	}
 
-	fn ld_r8_hl(&mut self, instruction: &Instruction) {
+	fn ld_r8_hl(&mut self, instruction: &Instruction) -> CycleCount {
 		let location = self.registers.get_hl();
 		let register = self.registers.get_r8(instruction.middle_u3());
 		*register = self.ram[location as usize];
+
+		2
 	}
 
-	fn ld_r16_a(&mut self, instruction: &Instruction) {
+	fn ld_r16_a(&mut self, instruction: &Instruction) -> CycleCount {
 		let value_to_load = self.registers.a;
 		let location = self.registers.get_r16(instruction.interleaved_r16(true));
 		self.ram[location as usize] = value_to_load;
+
+		2
 	}
 
-	fn ld_n16_a(&mut self, _: &Instruction) {
+	fn ld_n16_a(&mut self, _: &Instruction) -> CycleCount {
 		let value_to_load = self.registers.a;
 		let location = self.read_two_bytes();
 		self.ram[location as usize] = value_to_load;
+
+		4
 	}
 
-	fn ld_a16_sp(&mut self, _: &Instruction) {
+	fn ld_a16_sp(&mut self, _: &Instruction) -> CycleCount {
 		let [lo, hi] = self.registers.get_sp().to_le_bytes();
 		let location = self.read_two_bytes() as usize;
 		self.ram[location] = lo;
 		self.ram[location + 1] = hi;
+
+		5
 	}
 
-	fn ldh_n16_a(&mut self, _: &Instruction) {
+	fn ldh_n16_a(&mut self, _: &Instruction) -> CycleCount {
 		let location = self.read_byte();
 		let location = 0xFF00 + location as u16;
 		let value_to_load = self.registers.a;
 		self.ram[location as usize] = value_to_load;
+
+		3
 	}
 
-	fn ldh_c_a(&mut self, _: &Instruction) {
+	fn ldh_c_a(&mut self, _: &Instruction) -> CycleCount {
 		let c = self.registers.c as u16;
 		let location = 0xFF00 + c;
 		self.ram[location as usize] = self.registers.a;
+
+		2
 	}
 
-	fn ld_a_r16(&mut self, instruction: &Instruction) {
+	fn ld_a_r16(&mut self, instruction: &Instruction) -> CycleCount {
 		let location = self.registers.get_r16(instruction.interleaved_r16(false));
 		self.registers.a = self.ram[location as usize];
+
+		2
 	}
 
-	fn ld_a_n16(&mut self, _: &Instruction) {
+	fn ld_a_n16(&mut self, _: &Instruction) -> CycleCount {
 		let location = self.read_two_bytes();
 		self.registers.a = self.ram[location as usize];
+
+		4
 	}
 
-	fn ldh_a_n16(&mut self, _: &Instruction) {
+	fn ldh_a_a16(&mut self, _: &Instruction) -> CycleCount {
 		let location = self.read_byte();
 		let location = 0xFF00 + location as u16;
 		self.registers.a = self.ram[location as usize];
+
+		3
 	}
 
-	fn ldh_a_c(&mut self, _: &Instruction) {
+	fn ldh_a_c(&mut self, _: &Instruction) -> CycleCount {
 		let c = self.registers.c as u16;
 		let location = 0xFF00 + c;
 
 		self.registers.a = self.ram[location as usize];
+
+		2
 	}
 
-	fn ld_hli_a(&mut self, _: &Instruction) {
+	fn ld_hli_a(&mut self, _: &Instruction) -> CycleCount {
 		self.ld_hl_r8(&0o167);
 		self.inc_r16(&0o043);
+
+		2
 	}
 
-	fn ld_hld_a(&mut self, _: &Instruction) {
+	fn ld_hld_a(&mut self, _: &Instruction) -> CycleCount {
 		self.ld_hl_r8(&0o167);
 		self.dec_r16(&0o053);
+
+		2
 	}
 
-	fn ld_a_hli(&mut self, _: &Instruction) {
+	fn ld_a_hli(&mut self, _: &Instruction) -> CycleCount {
 		self.ld_r8_hl(&0o176);
 		self.inc_r16(&0o043);
+
+		2
 	}
 
-	fn ld_a_hld(&mut self, _: &Instruction) {
+	fn ld_a_hld(&mut self, _: &Instruction) -> CycleCount {
 		self.ld_r8_hl(&0o176);
 		self.dec_r16(&0o053);
+
+		2
 	}
 
-	fn ccf(&mut self, _: &Instruction) {
+	fn ccf(&mut self, _: &Instruction) -> CycleCount {
 		self.registers.set_flag(Flag::Subtraction, false);
 		self.registers.set_flag(Flag::HalfCarry, false);
 		self.registers.set_flag(Flag::Carry, !self.registers.get_flag(Flag::Carry));
+
+		1
 	}
 
-	fn scf(&mut self, _: &Instruction) {
+	fn scf(&mut self, _: &Instruction) -> CycleCount {
 		self.registers.set_flag(Flag::Subtraction, false);
 		self.registers.set_flag(Flag::HalfCarry, false);
 		self.registers.set_flag(Flag::Carry, true);
+
+		1
 	}
 
-	fn bit_u3_r8(&mut self, instruction: &Instruction) {
+	fn bit_u3_r8(&mut self, instruction: &Instruction) -> CycleCount {
 		let bit_index = instruction.middle_u3();
 		let value = *self.registers.get_r8(instruction.last_u3());
-
 		self.alu_bit_u3(bit_index, value);
+
+		2
 	}
 
-	fn bit_u3_hl(&mut self, instruction: &Instruction) {
+	fn bit_u3_hl(&mut self, instruction: &Instruction) -> CycleCount {
 		let bit_index = instruction.middle_u3();
 		let location = self.registers.get_hl();
 		let value = self.ram[location as usize];
-
 		self.alu_bit_u3(bit_index, value);
+
+		3
 	}
 
 	fn alu_bit_u3(&mut self, bit_index: u8, value: u8) {
@@ -736,129 +844,161 @@ impl CPU {
 		self.registers.set_flag(Flag::HalfCarry, true);
 	}
 
-	fn res_u3_r8(&mut self, instruction: &Instruction) {
+	fn res_u3_r8(&mut self, instruction: &Instruction) -> CycleCount {
 		let bit_mask = 1 << instruction.middle_u3();
 		let r8 = self.registers.get_r8(instruction.last_u3());
 
 		*r8 &= !bit_mask;
+		2
 	}
 
-	fn res_u3_hl(&mut self, instruction: &Instruction) {
+	fn res_u3_hl(&mut self, instruction: &Instruction) -> CycleCount {
 		let bit_mask = 1 << instruction.middle_u3();
 		let location = self.registers.get_hl();
 		let memory = &mut self.ram[location as usize];
 
 		*memory &= !bit_mask;
+		4
 	}
 
-	fn set_u3_r8(&mut self, instruction: &Instruction) {
+	fn set_u3_r8(&mut self, instruction: &Instruction) -> CycleCount {
 		let bit_mask = 1 << instruction.middle_u3();
 		let r8 = self.registers.get_r8(instruction.last_u3());
 
 		*r8 |= bit_mask;
+		2
 	}
 
-	fn set_u3_hl(&mut self, instruction: &Instruction) {
+	fn set_u3_hl(&mut self, instruction: &Instruction) -> CycleCount {
 		let bit_mask = 1 << instruction.middle_u3();
 		let location = self.registers.get_hl();
 		let memory = &mut self.ram[location as usize];
 
 		*memory |= bit_mask;
+		4
 	}
 
-	fn rl_r8(&mut self, instruction: &Instruction) {
+	fn rl_r8(&mut self, instruction: &Instruction) -> CycleCount {
 		let r8_value = *self.registers.get_r8(instruction.last_u3());
 		let res = self.alu_rotate(r8_value, Direction::LEFT, RotateType::RotateThroughCarry);
 		*self.registers.get_r8(instruction.last_u3()) = res;
+
+		2
 	}
 
-	fn rl_hl(&mut self, _: &Instruction) {
+	fn rl_hl(&mut self, _: &Instruction) -> CycleCount {
 		let value = self.ram[self.registers.get_hl() as usize];
 		let res = self.alu_rotate(value, Direction::LEFT, RotateType::RotateThroughCarry);
 		self.ram[self.registers.get_hl() as usize] = res;
+
+		4
 	}
 
-	fn rl_a(&mut self, _: &Instruction) {
+	fn rl_a(&mut self, _: &Instruction) -> CycleCount {
 		let value = self.registers.a;
 		let res = self.alu_rotate(value, Direction::LEFT, RotateType::RotateThroughCarry);
 		self.registers.a = res;
 
 		self.registers.set_flag(Flag::Zero, false);
+
+		1
 	}
 
-	fn rlc_r8(&mut self, instruction: &Instruction) {
+	fn rlc_r8(&mut self, instruction: &Instruction) -> CycleCount {
 		let r8_value = *self.registers.get_r8(instruction.last_u3());
 		let res = self.alu_rotate(r8_value, Direction::LEFT, RotateType::RotateWithoutCarry);
 		*self.registers.get_r8(instruction.last_u3()) = res;
+
+		2
 	}
 
-	fn rlc_hl(&mut self, _: &Instruction) {
+	fn rlc_hl(&mut self, _: &Instruction) -> CycleCount {
 		let value = self.ram[self.registers.get_hl() as usize];
 		let res = self.alu_rotate(value, Direction::LEFT, RotateType::RotateWithoutCarry);
 		self.ram[self.registers.get_hl() as usize] = res;
+
+		4
 	}
 
-	fn rlc_a(&mut self, _: &Instruction) {
+	fn rlc_a(&mut self, _: &Instruction) -> CycleCount {
 		let value = self.registers.a;
 		let res = self.alu_rotate(value, Direction::LEFT, RotateType::RotateWithoutCarry);
 		self.registers.a = res;
 
 		self.registers.set_flag(Flag::Zero, false);
+
+		1
 	}
 
-	fn sla_r8(&mut self, instruction: &Instruction) {
+	fn sla_r8(&mut self, instruction: &Instruction) -> CycleCount {
 		let value = *self.registers.get_r8(instruction.last_u3());
 		let res = self.alu_rotate(value, Direction::LEFT, RotateType::Shift);
 		*self.registers.get_r8(instruction.last_u3()) = res;
+
+		2
 	}
 
-	fn sla_hl(&mut self, _: &Instruction) {
+	fn sla_hl(&mut self, _: &Instruction) -> CycleCount {
 		let value = self.ram[self.registers.get_hl() as usize];
 		let res = self.alu_rotate(value, Direction::LEFT, RotateType::Shift);
 		self.ram[self.registers.get_hl() as usize] = res;
+
+		4
 	}
 
-	fn rr_r8(&mut self, instruction: &Instruction) {
+	fn rr_r8(&mut self, instruction: &Instruction) -> CycleCount {
 		let r8_value = *self.registers.get_r8(instruction.last_u3());
 		let res = self.alu_rotate(r8_value, Direction::RIGHT, RotateType::RotateThroughCarry);
 		*self.registers.get_r8(instruction.last_u3()) = res;
+
+		2
 	}
 
-	fn rr_hl(&mut self, _: &Instruction) {
+	fn rr_hl(&mut self, _: &Instruction) -> CycleCount {
 		let value = self.ram[self.registers.get_hl() as usize];
 		let res = self.alu_rotate(value, Direction::RIGHT, RotateType::RotateThroughCarry);
 		self.ram[self.registers.get_hl() as usize] = res;
+
+		4
 	}
 
-	fn rr_a(&mut self, _: &Instruction) {
+	fn rr_a(&mut self, _: &Instruction) -> CycleCount {
 		let value = self.registers.a;
 		let res = self.alu_rotate(value, Direction::RIGHT, RotateType::RotateThroughCarry);
 		self.registers.a = res;
 
 		self.registers.set_flag(Flag::Zero, false);
+
+		1
 	}
 
-	fn rrc_r8(&mut self, instruction: &Instruction) {
+	fn rrc_r8(&mut self, instruction: &Instruction) -> CycleCount {
 		let r8_value = *self.registers.get_r8(instruction.last_u3());
 		let res = self.alu_rotate(r8_value, Direction::RIGHT, RotateType::RotateWithoutCarry);
 		*self.registers.get_r8(instruction.last_u3()) = res;
+
+		2
 	}
 
-	fn rrc_hl(&mut self, _: &Instruction) {
+	fn rrc_hl(&mut self, _: &Instruction) -> CycleCount {
 		let value = self.ram[self.registers.get_hl() as usize];
 		let res = self.alu_rotate(value, Direction::RIGHT, RotateType::RotateWithoutCarry);
 		self.ram[self.registers.get_hl() as usize] = res;
+
+		4
 	}
 
-	fn rrc_a(&mut self, _: &Instruction) {
+	fn rrc_a(&mut self, _: &Instruction) -> CycleCount {
 		let value = self.registers.a;
 		let res = self.alu_rotate(value, Direction::RIGHT, RotateType::RotateWithoutCarry);
 		self.registers.a = res;
 
 		self.registers.set_flag(Flag::Zero, false);
+
+		1
 	}
 
-	fn sra_r8(&mut self, instruction: &Instruction) {
+	fn sra_r8(&mut self, instruction: &Instruction) -> CycleCount {
 		let value = *self.registers.get_r8(instruction.last_u3());
 		let mut res = self.alu_rotate(value, Direction::RIGHT, RotateType::Shift);
 
@@ -866,9 +1006,11 @@ impl CPU {
 		res = if bit_7_mask > 0 { res | bit_7_mask } else { res & !bit_7_mask };
 
 		*self.registers.get_r8(instruction.last_u3()) = res;
+
+		2
 	}
 
-	fn sra_hl(&mut self, _: &Instruction) {
+	fn sra_hl(&mut self, _: &Instruction) -> CycleCount {
 		let value = self.ram[self.registers.get_hl() as usize];
 		let mut res = self.alu_rotate(value, Direction::RIGHT, RotateType::Shift);
 
@@ -876,18 +1018,24 @@ impl CPU {
 		res = if bit_7_mask > 0 { res | bit_7_mask } else { res & !bit_7_mask };
 
 		self.ram[self.registers.get_hl() as usize] = res;
+
+		4
 	}
 
-	fn srl_r8(&mut self, instruction: &Instruction) {
+	fn srl_r8(&mut self, instruction: &Instruction) -> CycleCount {
 		let value = *self.registers.get_r8(instruction.last_u3());
 		let res = self.alu_rotate(value, Direction::RIGHT, RotateType::Shift);
 		*self.registers.get_r8(instruction.last_u3()) = res;
+
+		2
 	}
 
-	fn srl_hl(&mut self, _: &Instruction) {
+	fn srl_hl(&mut self, _: &Instruction) -> CycleCount {
 		let value = self.ram[self.registers.get_hl() as usize];
 		let res = self.alu_rotate(value, Direction::RIGHT, RotateType::Shift);
 		self.ram[self.registers.get_hl() as usize] = res;
+
+		4
 	}
 
 	fn alu_rotate(&mut self, value: u8, direction: Direction, rotate_type: RotateType) -> u8 {
@@ -911,16 +1059,20 @@ impl CPU {
 		value
 	}
 
-	fn swap_r8(&mut self, instruction: &Instruction) {
+	fn swap_r8(&mut self, instruction: &Instruction) -> CycleCount {
 		let value = *self.registers.get_r8(instruction.last_u3());
 		let res = self.alu_swap(value);
 		*self.registers.get_r8(instruction.last_u3()) = res;
+
+		2
 	}
 
-	fn swap_hl(&mut self, _: &Instruction) {
+	fn swap_hl(&mut self, _: &Instruction) -> CycleCount {
 		let value = self.ram[self.registers.get_hl() as usize];
 		let res = self.alu_swap(value);
 		self.ram[self.registers.get_hl() as usize] = res;
+
+		4
 	}
 
 	fn alu_swap(&mut self, value: u8) -> u8 {
@@ -936,42 +1088,56 @@ impl CPU {
 		res
 	}
 
-	fn call_n16(&mut self, _: &Instruction) {
+	fn call_n16(&mut self, _: &Instruction) -> CycleCount {
 		let n16 = self.read_two_bytes();
 		self.stack_push_16(self.registers.pc);
 		self.registers.pc = n16;
+
+		6
 	}
 
-	fn call_cc_n16(&mut self, instruction: &Instruction) {
+	fn call_cc_n16(&mut self, instruction: &Instruction) -> CycleCount {
 		let n16 = self.read_two_bytes();
 		if self.registers.cc(instruction.middle_u3()) {
 			self.stack_push_16(self.registers.pc);
 			self.registers.pc = n16;
+			6
+		} else {
+			3
 		}
 	}
 
-	fn ret_cc(&mut self, instruction: &Instruction) {
+	fn ret_cc(&mut self, instruction: &Instruction) -> CycleCount {
 		if self.registers.cc(instruction.middle_u3()) {
 			let new_pc = self.stack_pop_16();
 			self.registers.pc = new_pc;
+			5
+		} else {
+			2
 		}
 	}
 
-	fn ret(&mut self, _: &Instruction) {
+	fn ret(&mut self, _: &Instruction) -> CycleCount {
 		let new_pc = self.stack_pop_16();
 		self.registers.pc = new_pc;
+
+		4
 	}
 
-	fn reti(&mut self, _: &Instruction) {
+	fn reti(&mut self, _: &Instruction) -> CycleCount {
 		let new_pc = self.stack_pop_16();
 		self.registers.pc = new_pc;
 		self.ime = Ime::Set;
+
+		4
 	}
 
-	fn rst(&mut self, instruction: &Instruction) {
+	fn rst(&mut self, instruction: &Instruction) -> CycleCount {
 		let addr = CPU::get_rst_address(instruction.middle_u3());
 		self.stack_push_16(self.registers.pc);
 		self.registers.pc = addr;
+
+		4
 	}
 
 	fn get_rst_address(value: u8) -> u16 {
@@ -988,7 +1154,7 @@ impl CPU {
 		}
 	}
 
-	fn push_r16(&mut self, instruction: &Instruction) {
+	fn push_r16(&mut self, instruction: &Instruction) -> CycleCount {
 		let index = instruction.interleaved_r16(true);
 		let value = if index == 3 {
 			u16::from_be_bytes([self.registers.a, self.registers.f & 0xF0])
@@ -997,6 +1163,8 @@ impl CPU {
 		};
 
 		self.stack_push_16(value);
+
+		4
 	}
 
 	fn stack_push_16(&mut self, value: u16) {
@@ -1011,7 +1179,7 @@ impl CPU {
 		self.registers.set_sp(sp);
 	}
 
-	fn pop_r16(&mut self, instruction: &Instruction) {
+	fn pop_r16(&mut self, instruction: &Instruction) -> CycleCount {
 		let index = instruction.interleaved_r16(true);
 		let value = self.stack_pop_16();
 
@@ -1023,6 +1191,8 @@ impl CPU {
 		} else {
 			self.registers.set_r16(index, value);
 		}
+
+		3
 	}
 
 	fn stack_pop_16(&mut self) -> u16 {
@@ -1036,33 +1206,45 @@ impl CPU {
 	}
 
 
-	fn jp_hl(&mut self, _: &Instruction) {
+	fn jp_hl(&mut self, _: &Instruction) -> CycleCount {
 		let hl = self.registers.get_hl();
 		self.registers.pc = hl;
+
+		1
 	}
 
-	fn jp_n16(&mut self, _: &Instruction) {
+	fn jp_n16(&mut self, _: &Instruction) -> CycleCount {
 		let n16 = self.read_two_bytes();
 		self.registers.pc = n16;
+
+		4
 	}
 
-	fn jp_cc_n16(&mut self, instruction: &Instruction) {
+	fn jp_cc_n16(&mut self, instruction: &Instruction) -> CycleCount {
 		let n16 = self.read_two_bytes();
 		if self.registers.cc(instruction.middle_u3()) {
 			self.registers.pc = n16;
+			4
+		} else {
+			3
 		}
 	}
 
-	fn jr_n16(&mut self, _: &Instruction) {
+	fn jr_n16(&mut self, _: &Instruction) -> CycleCount {
 		let byte = self.read_byte();
 		self.handle_jr(byte);
+
+		3
 	}
 
-	fn jr_cc_n16(&mut self, instruction: &Instruction) {
+	fn jr_cc_n16(&mut self, instruction: &Instruction) -> CycleCount {
 		let byte = self.read_byte();
 		let cc_offset = 4;
 		if self.registers.cc(instruction.middle_u3() - cc_offset) {
 			self.handle_jr(byte);
+			3
+		} else {
+			2
 		}
 	}
 
@@ -1078,7 +1260,7 @@ impl CPU {
 		self.registers.pc = new_addr;
 	}
 
-	fn add_sp_e8(&mut self, _: &Instruction) {
+	fn add_sp_e8(&mut self, _: &Instruction) -> CycleCount {
 		let e8 = self.read_byte() as i8;
 		let sp = self.registers.get_sp();
 
@@ -1091,6 +1273,8 @@ impl CPU {
 		self.registers.set_flag(Flag::Subtraction, false);
 		self.registers.set_flag(Flag::HalfCarry, half_carried);
 		self.registers.set_flag(Flag::Carry, overflowed);
+
+		4
 	}
 
 	fn dec_sp(&mut self, _: Instruction) {
@@ -1099,41 +1283,48 @@ impl CPU {
 		self.registers.set_sp(res);
 	}
 
-	fn di(&mut self, _: &Instruction) {
+	fn di(&mut self, _: &Instruction) -> CycleCount {
 		self.ime = Ime::Off;
+
+		1
 	}
 
-	fn ei(&mut self, _: &Instruction) {
+	fn ei(&mut self, _: &Instruction) -> CycleCount {
 		self.ime = Ime::ToSet;
+
+		1
 	}
 
-	fn halt(&mut self, _: &Instruction) {
-		// TODO finalize
+	fn halt(&mut self, _: &Instruction) -> CycleCount {
+		// TODO finalize and ensure cycle count is correct
 		// IME is set
 		if self.ime == Ime::Set {
 			self.mode = Mode::LowPower;
-			return;
 		}
 
 		// IME not set and no interrupts pending
-		if self.ram.pending_interrupt().is_none() {
+		else if self.ram.pending_interrupt().is_none() {
 			self.mode = Mode::LowPower;
-			return;
 		}
 
 		// IME not set and interrupts are pending
-		if self.ram.pending_interrupt().is_some() {
+		else {
 			// TODO: Handle halt bug properly
 			self.halt_bug_active = true;
-			return;
 		}
+
+		1
 	}
 
-	fn stop(&mut self, _: &Instruction) {
+	fn stop(&mut self, _: &Instruction) -> CycleCount {
+		self.read_byte();
 		self.mode = Mode::VeryLowPower;
+		// TODO: Reset DIV register
+
+		1
 	}
 
-	fn daa(&mut self, _: &Instruction) {
+	fn daa(&mut self, _: &Instruction) -> CycleCount {
 		let mut adjustment = 0;
 		let mut new_carry_flag = false;
 
@@ -1156,22 +1347,27 @@ impl CPU {
 		self.registers.set_flag(Flag::HalfCarry, false);
 		self.registers.set_flag(Flag::Carry, new_carry_flag);
 
+		1
 	}
 
-	fn handle_interrupt(&mut self) {
+	fn handle_interrupts(&mut self) -> CycleCount {
 		if self.ime != Ime::Set {
-			return;
+			return 0;
 		}
 
 		let pending_interrupt = self.ram.pending_interrupt();
 
 		if let Some(interrupt) = pending_interrupt {
+			eprintln!("Handling interrupt: {:?} while the pc is at {:X}", interrupt, self.registers.pc);
 			self.stack_push_16(self.registers.pc);
 			self.registers.pc = interrupt.handler_address();
+			self.mode = Mode::NormalSpeed;
 			self.ime = Ime::Off;
 			self.ram.clear_interrupt(interrupt);
+			5
+		} else {
+			0
 		}
-
 	}
 }
 
@@ -2287,6 +2483,7 @@ mod test {
 
 		cpu.run_operation((instruction, op));
 		assert_eq!(cpu.mode, VeryLowPower);
+		assert_eq!(cpu.registers.pc, 2, "Stop is a 2 byte instruction where the second byte is ignored");
 	}
 
 	#[test]
@@ -2347,6 +2544,10 @@ mod test {
 		cpu.run_operation((instruction, op));
 		assert_eq!(cpu.registers.f, 0b0101_0000, "Carry flag should be kept if subtract flag is set");
 		assert_eq!(cpu.registers.a, 1, "0x60 should have been subtracted");
+	}
+
+	fn test_tma_edge_case() {
+		// TODO: If a TMA write is executed on the same M-cycle as the content of TMA is transferred to TIMA due to a timer overflow, the old value is transferred to TIMA.
 	}
 
 	#[test]

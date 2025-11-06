@@ -7,10 +7,11 @@ pub trait RamOperations {
 	fn load_rom(&mut self, rom: &[u8]);
 	fn interrupts_enabled(&self) -> bool;
 	fn pending_interrupt(&self) -> Option<Interrupt>;
+	fn request_interrupt(&mut self, interrupt: Interrupt);
 	fn clear_interrupt(&mut self, interrupt: Interrupt);
 }
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Copy, Clone)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Copy, Clone, Debug)]
 pub enum Interrupt {
 	VBlank = 0,
 	Stat = 1,
@@ -71,6 +72,11 @@ impl RamOperations for Ram {
 		None
 	}
 
+	fn request_interrupt(&mut self, interrupt: Interrupt) {
+		let mask = 1 << (interrupt as u8);
+		self[0xFF0F] |= mask;
+	}
+
 	fn clear_interrupt(&mut self, interrupt: Interrupt) {
 		let mask = 1 << (interrupt as u8);
 		self[0xFF0F] &= !mask;
@@ -119,7 +125,7 @@ mod test {
 		// Enabled a pending interrupt
 		ram[0xFFFF] = 0b1111_0010;
 		assert!(ram.interrupts_enabled());
-		assert!(ram.pending_interrupt() == Some(Interrupt::Stat));
+		assert_eq!(ram.pending_interrupt(), Some(Interrupt::Stat));
 
 		// Try clearing some interrupts
 		ram.clear_interrupt(Interrupt::Timer);
@@ -127,5 +133,8 @@ mod test {
 		ram.clear_interrupt(Interrupt::VBlank);
 		assert_eq!(ram[0xFF0F], 0b0000_1010);
 
+		// Try requesting interrupts back
+		ram.request_interrupt(Interrupt::Timer);
+		assert_eq!(ram[0xFF0F], 0b0000_1110);
 	}
 }

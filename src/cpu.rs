@@ -1,5 +1,6 @@
 use crate::cpu::register::Registers;
 use crate::ram::Ram;
+use crate::timer::Timer;
 
 pub mod instruction;
 pub mod register;
@@ -23,8 +24,8 @@ enum Mode {
 pub struct CPU {
 	pub registers: Registers,
 	pub ram: Ram,
+	pub timer: Timer,
 	ime: Ime,
-	cycle_count: u64,
 	mode: Mode,
 	halt_bug_active: bool,
 }
