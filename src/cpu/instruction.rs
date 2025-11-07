@@ -45,6 +45,8 @@ trait FollowingBytesOps {
 }
 
 impl CPU {
+	// TODO: Stop VRAM or OAM access during certain PPU modes
+
 	pub fn new() -> Self {
 		CPU {
 			registers: Registers::new(),
