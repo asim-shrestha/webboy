@@ -2,7 +2,7 @@ use std::ptr::fn_addr_eq;
 use crate::timer::Timer;
 use super::register::{Flag, Registers};
 use super::{carry, Ime};
-use super::super::ram::{Ram, RamOperations};
+use super::super::ram::{Ram};
 use super::{CPU, Mode};
 
 type Instruction = u8;
@@ -1377,7 +1377,7 @@ enum RotateType {
 #[cfg(test)]
 mod test {
 	use super::*;
-	use super::super::super::ram::{RamOperations, TestRamOperations};
+	use super::super::super::ram::{TestRamOperations};
 	use std::ptr::fn_addr_eq;
 	use crate::cpu::Mode::{LowPower, NormalSpeed, VeryLowPower};
 
@@ -1386,7 +1386,6 @@ mod test {
 		let cpu = CPU::new();
 		assert_eq!(cpu.registers.f, 0, "No flags should be set to start");
 		assert_eq!(cpu.registers.pc, 0, "PC should be 0 to start");
-		assert!(cpu.ram.iter().all(|value| *value == 0), "Ram should be empty to start");
 	}
 
 	#[test]

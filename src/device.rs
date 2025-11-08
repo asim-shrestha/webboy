@@ -1,17 +1,28 @@
 use crate::cpu::CPU;
 use crate::ppu::PPU;
-use crate::ram::RamOperations;
+use crate::tlu::{TLUData, TLU};
+use std::sync::mpsc::{Sender};
+
+#[derive(Debug)]
+pub struct ImageData {
+	pub tlu_data: TLUData,
+}
 
 pub struct Device {
 	cpu: CPU,
 	ppu: PPU,
+	tlu: TLU,
+
+	image_channel: Sender<ImageData>,
 }
 
 impl Device {
-	pub fn new() -> Self {
+	pub fn new(image_channel: Sender<ImageData>) -> Self {
 		Self {
 			cpu: CPU::new(),
-			ppu: PPU::new()
+			ppu: PPU::new(),
+			tlu: TLU {},
+			image_channel,
 		}
 	}
 
@@ -36,7 +47,9 @@ impl Device {
 	}
 
 	pub fn tick(&mut self) {
-		let m_cycles = self.cpu.execute(true);
-		self.ppu.tick(m_cycles);
+		let m_cycles = self.cpu.execute(false);
+		self.ppu.tick(m_cycles, &mut self.cpu.ram);
+		let tlu_data = self.tlu.update(&self.cpu.ram);
+		self.image_channel.send(ImageData {tlu_data}).unwrap();
 	}
 }

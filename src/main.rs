@@ -1,8 +1,13 @@
-use webboy::device::Device;
+mod renderer;
+
+use webboy::device::{Device, ImageData};
 use std::fs::read;
 use std::env;
+use std::thread;
+use std::sync::mpsc::{self, Sender};
 
-fn main() {
+#[macroquad::main("Webboy")]
+async fn main() {
     let args = env::args().collect::<Vec<String>>();
     let file_name = if args.len() > 1 {
         &args[1]
@@ -12,7 +17,18 @@ fn main() {
     };
 
     let rom: Vec<u8> = load_rom(file_name);
-    let mut device = Device::new();
+    let (tx, rx) = mpsc::channel::<ImageData>();
+    thread::spawn(move || {
+        webboy(rom, tx);
+    });
+
+    loop {
+        renderer::handle(&rx).await;
+    }
+}
+
+fn webboy(rom: Vec<u8>, tx: Sender<ImageData>) {
+    let mut device = Device::new(tx);
     device.load(&rom);
 
     let max_log_test_length = 7427500;

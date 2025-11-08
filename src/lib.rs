@@ -1,6 +1,8 @@
 pub mod device;
 pub mod cpu;
 pub mod ram;
+pub mod tlu;
+pub mod palette;
 mod ppu;
 mod input;
 mod rom;

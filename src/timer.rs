@@ -1,5 +1,5 @@
 use crate::cpu::instruction::MCycles;
-use crate::ram::{Interrupt, Ram, RamOperations};
+use crate::ram::{Interrupt, Ram};
 
 const M_CYCLES_TO_CLOCK_CYCLES: u16 = 4;
 const M_CYCLES_TO_DIV_INCREMENT: u16 = 64;
