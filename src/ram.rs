@@ -1,15 +1,6 @@
+use std::ops::{Index, IndexMut};
+
 const TWO_TO_THE_16: usize = 65_536;
-pub type Ram = [u8; TWO_TO_THE_16];
-
-
-pub trait RamOperations {
-	fn new() -> Self;
-	fn load_rom(&mut self, rom: &[u8]);
-	fn interrupts_enabled(&self) -> bool;
-	fn pending_interrupt(&self) -> Option<Interrupt>;
-	fn request_interrupt(&mut self, interrupt: Interrupt);
-	fn clear_interrupt(&mut self, interrupt: Interrupt);
-}
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Copy, Clone, Debug)]
 pub enum Interrupt {
@@ -32,30 +23,54 @@ impl Interrupt {
 	}
 }
 
-impl RamOperations for Ram {
-	fn new() -> Self {
-		[0; TWO_TO_THE_16]
+pub struct Ram {
+	data: [u8; TWO_TO_THE_16],
+}
+
+impl Index<usize> for Ram {
+	type Output = u8;
+
+	fn index(&self, index: usize) -> &Self::Output {
+		&self.data[index]
+	}
+}
+
+impl IndexMut<usize> for Ram {
+	fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+		if index >= 0x8000 && index <= 0x97FF {
+			// println!("Mutating index BRUHH!!: {:4X}", index);
+		}
+		&mut self.data[index]
+	}
+}
+
+
+impl Ram {
+	pub fn new() -> Self {
+		Self {
+			data: [0; TWO_TO_THE_16]
+		}
 	}
 
-	fn load_rom(&mut self, rom: &[u8]) {
-		// TODO: Handle MBCs for larger ROMs
-		if rom.len() > 32768 {
+	pub fn load_rom(&mut self, rom: &[u8]) {
+		// TODO: Handle MBCs for larger ROMs and do proper length checks
+		if rom.len() > 65536 {
 			panic!(
 				"ROM size incorrect. Expected {} bytes, got {} bytes",
-				32768,
+				65536,
 				rom.len()
 			);
 		}
 
 
-		self[..rom.len()].copy_from_slice(rom);
+		self.data[..rom.len()].copy_from_slice(rom);
 	}
 
-	fn interrupts_enabled(&self) -> bool {
-		self[0xFFFF] > 0
+	pub fn interrupts_enabled(&self) -> bool {
+		self.data[0xFFFF] > 0
 	}
 
-	fn pending_interrupt(&self) -> Option<Interrupt> {
+	pub fn pending_interrupt(&self) -> Option<Interrupt> {
 		for interrupt in [
 			Interrupt::VBlank,
 			Interrupt::Stat,
@@ -64,7 +79,7 @@ impl RamOperations for Ram {
 			Interrupt::Joypad,
 		] {
 			let mask = 1 << (interrupt as u8);
-			if (self[0xFFFF] & mask) != 0 && (self[0xFF0F] & mask) != 0 {
+			if (self.data[0xFFFF] & mask) != 0 && (self.data[0xFF0F] & mask) != 0 {
 				return Some(interrupt);
 			}
 		}
@@ -72,14 +87,14 @@ impl RamOperations for Ram {
 		None
 	}
 
-	fn request_interrupt(&mut self, interrupt: Interrupt) {
+	pub fn request_interrupt(&mut self, interrupt: Interrupt) {
 		let mask = 1 << (interrupt as u8);
-		self[0xFF0F] |= mask;
+		self.data[0xFF0F] |= mask;
 	}
 
-	fn clear_interrupt(&mut self, interrupt: Interrupt) {
+	pub fn clear_interrupt(&mut self, interrupt: Interrupt) {
 		let mask = 1 << (interrupt as u8);
-		self[0xFF0F] &= !mask;
+		self.data[0xFF0F] &= !mask;
 	}
 }
 
@@ -92,7 +107,7 @@ impl TestRamOperations for Ram {
 	fn test_load(&mut self, location: u16, data: Vec<u8>) {
 		let start = location as usize;
 		let end = start + data.len();
-		self[start..end].copy_from_slice(&data);
+		self.data[start..end].copy_from_slice(&data);
 	}
 }
 

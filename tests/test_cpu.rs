@@ -3,7 +3,7 @@ use std::fs;
 use std::path::PathBuf;
 use webboy::cpu::CPU;
 use webboy::cpu::register::Registers;
-use webboy::ram::{Ram, RamOperations};
+use webboy::ram::{Ram};
 
 fn read_file(file_name: &str) -> Result<Value> {
 	let data: String = fs::read_to_string(file_name).unwrap();

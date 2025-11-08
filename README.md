@@ -69,3 +69,11 @@ to ensure you can run those tests without a proper PPU
 [x] 10
 
 [x] 11
+
+Note: The boot screen will take a long time to get right
+
+Other roms will also take a very long time to get right
+
+
+I recommend first rendering out what the tile data looks like and then rendering the background tilemap
+When you render the background tilemap
