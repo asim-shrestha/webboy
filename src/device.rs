@@ -14,6 +14,7 @@ pub struct Device {
 	tlu: TLU,
 
 	image_channel: Sender<ImageData>,
+	frame_counter: u64,
 }
 
 impl Device {
@@ -23,6 +24,7 @@ impl Device {
 			ppu: PPU::new(),
 			tlu: TLU {},
 			image_channel,
+			frame_counter: 0,
 		}
 	}
 
@@ -49,7 +51,14 @@ impl Device {
 	pub fn tick(&mut self) {
 		let m_cycles = self.cpu.execute(false);
 		self.ppu.tick(m_cycles, &mut self.cpu.ram);
-		let tlu_data = self.tlu.update(&self.cpu.ram);
-		self.image_channel.send(ImageData {tlu_data}).unwrap();
+
+		// Only send frame data every ~70224 dots (60 FPS)
+		// Each M-cycle = 4 dots, so send every ~17556 ticks
+		self.frame_counter += m_cycles as u64;
+		if self.frame_counter >= 17556 {
+			let tlu_data = self.tlu.update(&self.cpu.ram);
+			let _ = self.image_channel.send(ImageData {tlu_data});
+			self.frame_counter = 0;
+		}
 	}
 }

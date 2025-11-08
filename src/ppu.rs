@@ -156,7 +156,6 @@ impl PPU {
 			self.current_scanline_dot = 0;
 		}
 
-		println!("{}", self.current_scanline);
 		if self.current_scanline == TOTAL_SCAN_LINES {
 			// TODO: Handle frame end
 			ram.request_interrupt(Interrupt::VBlank);

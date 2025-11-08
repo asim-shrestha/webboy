@@ -1,12 +1,13 @@
 mod renderer;
 
-use webboy::device::{Device, ImageData};
-use std::fs::read;
+use crate::renderer::window_conf;
 use std::env;
-use std::thread;
+use std::fs::read;
 use std::sync::mpsc::{self, Sender};
+use std::thread;
+use webboy::device::{Device, ImageData};
 
-#[macroquad::main("Webboy")]
+#[macroquad::main(window_conf)]
 async fn main() {
     let args = env::args().collect::<Vec<String>>();
     let file_name = if args.len() > 1 {

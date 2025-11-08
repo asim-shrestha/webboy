@@ -1,4 +1,4 @@
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Color {
 	White=0,
 	LightGray=1,
@@ -12,7 +12,7 @@ impl Color {
 			Color::White => [255, 255, 255, 255],
 			Color::LightGray => [0, 255, 0, 255],
 			Color::DarkGray => [255, 0, 0, 255],
-			Color::Black => [0, 0, 0, 255],
+			Color::Black => [0, 0, 255, 255],
 		}
 	}
 }

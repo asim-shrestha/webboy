@@ -211,11 +211,8 @@ impl CPU {
 			0o305 => CPU::push_r16,
 			0o315 => CPU::call_n16,
 			0o325 => CPU::push_r16,
-			0o335 => panic!("Attempted to run instruction 0o335, which the CPU does not support"),
 			0o345 => CPU::push_r16,
-			0o355 => panic!("Attempted to run instruction 0o355, which the CPU does not support"),
 			0o365 => CPU::push_r16,
-			0o375 => panic!("Attempted to run instruction 0o375, which the CPU does not support"),
 			0o302 => CPU::jp_cc_n16,
 			0o312 => CPU::jp_cc_n16,
 			0o322 => CPU::jp_cc_n16,
@@ -229,7 +226,19 @@ impl CPU {
 			0o360 => CPU::ldh_a_a16,
 			0o362 => CPU::ldh_a_c,
 			0o372 => CPU::ld_a_n16,
-			_ => panic!("Unhandled instruction: {instruction}"),
+			// These are the unmapped instructions
+			0o323 => CPU::no_op,
+			0o333 => CPU::no_op,
+			0o343 => CPU::no_op,
+			0o353 => CPU::no_op,
+			0o344 => CPU::no_op,
+			0o354 => CPU::no_op,
+			0o364 => CPU::no_op,
+			0o374 => CPU::no_op,
+			0o335 => CPU::no_op,
+			0o355 => CPU::no_op,
+			0o375 => CPU::no_op,
+			_ => panic!("Unhandled instruction: {instruction:3o}"),
 		};
 
 		(instruction, function)

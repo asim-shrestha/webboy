@@ -38,7 +38,7 @@ impl Index<usize> for Ram {
 impl IndexMut<usize> for Ram {
 	fn index_mut(&mut self, index: usize) -> &mut Self::Output {
 		if index >= 0x8000 && index <= 0x97FF {
-		println!("Mutating index BRUHH!!: {:4X}", index);
+			// println!("Mutating index BRUHH!!: {:4X}", index);
 		}
 		&mut self.data[index]
 	}
@@ -54,7 +54,7 @@ impl Ram {
 
 	pub fn load_rom(&mut self, rom: &[u8]) {
 		// TODO: Handle MBCs for larger ROMs
-		if rom.len() > 32768 {
+		if rom.len() > 65536 {
 			panic!(
 				"ROM size incorrect. Expected {} bytes, got {} bytes",
 				32768,
