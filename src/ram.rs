@@ -53,11 +53,11 @@ impl Ram {
 	}
 
 	pub fn load_rom(&mut self, rom: &[u8]) {
-		// TODO: Handle MBCs for larger ROMs
+		// TODO: Handle MBCs for larger ROMs and do proper length checks
 		if rom.len() > 65536 {
 			panic!(
 				"ROM size incorrect. Expected {} bytes, got {} bytes",
-				32768,
+				65536,
 				rom.len()
 			);
 		}
