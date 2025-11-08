@@ -1,5 +1,4 @@
-use webboy::ram::{Ram, RamOperations};
-use webboy::cpu::CPU;
+use webboy::device::Device;
 use std::fs::read;
 use std::env;
 
@@ -13,15 +12,12 @@ fn main() {
     };
 
     let rom: Vec<u8> = load_rom(file_name);
-    let mut cpu = CPU::new();
-    cpu.ram[0xFF44] = 0x90; // Set LY to simulate some VBlank progress
-    cpu.ram.load_rom(&rom);
-
-    cpu.boot();
+    let mut device = Device::new();
+    device.load(&rom);
 
     let max_log_test_length = 7427500;
     for _ in 0..=max_log_test_length {
-        cpu.execute(true);
+        device.tick();
     }
 }
 

@@ -1,3 +1,4 @@
+use crate::cpu::instruction::MCycles;
 use crate::ram::{Interrupt, Ram, RamOperations};
 
 const M_CYCLES_TO_CLOCK_CYCLES: u16 = 4;
@@ -30,7 +31,7 @@ impl Timer {
 		(ram[TAC_ADDRESS] & 0b0000_0100) != 0
 	}
 
-	pub fn increment_cycle(&mut self, ram: &mut Ram, cycle_count: u8) {
+	pub fn increment_cycle(&mut self, ram: &mut Ram, cycle_count: MCycles) {
 		if cycle_count > 6 {
 			panic!("timer: Invalid cycle count increase of {}", cycle_count);
 		}
