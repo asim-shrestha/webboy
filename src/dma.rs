@@ -30,7 +30,7 @@ impl DMA {
 		for _ in 0..cycles {
 			let source = start_location + self.current_index;
 			let destination = DESTINATION_START_ADDRESS + self.current_index;
-			ram.write(destination,  ram.read(source));
+			ram.write(destination, ram.read(source));
 
 			self.current_index += 1;
 

@@ -43,7 +43,7 @@ impl Timer {
 
 		// DIV is always incremented at the cycle interval
 		if self.cycles_since_div >= M_CYCLES_TO_DIV_INCREMENT {
-			ram.write(DIV_ADDRESS,ram.read(DIV_ADDRESS).wrapping_add(1));
+			ram.write(DIV_ADDRESS, ram.read(DIV_ADDRESS).wrapping_add(1));
 			self.cycles_since_div -= M_CYCLES_TO_DIV_INCREMENT;
 		}
 
