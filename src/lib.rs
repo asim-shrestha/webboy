@@ -7,3 +7,4 @@ mod ppu;
 mod input;
 mod rom;
 mod timer;
+pub mod dma;
