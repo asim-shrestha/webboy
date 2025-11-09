@@ -57,7 +57,6 @@ impl Device {
 		self.dma.tick_transfer(&mut self.cpu.ram, m_cycles);
 
 		self.ppu.tick(m_cycles, &mut self.cpu.ram);
-		// TODO: Handle activating DMA based on ram update
 
 		// Only send frame data every ~70224 dots (60 FPS)
 		// Each M-cycle = 4 dots, so send every ~17556 ticks

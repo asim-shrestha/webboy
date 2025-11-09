@@ -51,7 +51,6 @@ impl Ram {
 			return 0xFF;
 		}
 
-
 		self.data[address as usize]
 	}
 

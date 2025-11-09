@@ -96,7 +96,7 @@ fn assert_expected(cpu: &CPU, test: &Value) {
 		assert_eq!(
 			cpu.ram.read(array_values[0].as_u64().unwrap() as u16),
 			array_values[1].as_u64().unwrap() as u8,
-			"RAM value mismatch at address 0x{:04X}", array_values[0].as_u64().unwrap()
+			"RAM value mismatch at address 0x{:04X}", array_values[0].as_u64().unwrap() as u16
 		);
 	}
 
