@@ -19,7 +19,6 @@ impl DMA {
 	}
 
 	pub fn start_transfer(&mut self) {
-		println!("Starting DMA transfer");
 		self.active = true;
 	}
 
@@ -31,15 +30,14 @@ impl DMA {
 		for _ in 0..cycles {
 			let source =  start_location + self.current_index;
 			let destination = DESTINATION_START_ADDRESS + self.current_index;
-			println!("Writing to {:4X} from {:4X} with value {}", destination, source, ram[source]);
 			ram[destination] = ram[source];
 
 			self.current_index += 1;
 
-			if self.current_index == MAX_LOWER_NIBBLE { break; }
+			if self.current_index > MAX_LOWER_NIBBLE { break; }
 		}
 
-		if self.current_index == MAX_LOWER_NIBBLE {
+		if self.current_index > MAX_LOWER_NIBBLE {
 			self.active = false;
 			self.current_index = 0;
 		}
@@ -56,7 +54,7 @@ mod tests {
 		let mut ram = Ram::new();
 		ram[DMA_ADDRESS] = 0x80;
 
-		for i in 0..0x9F {
+		for i in 0..=0x9F {
 			ram[0x8000 + i] = loaded_value;
 		}
 
@@ -65,7 +63,7 @@ mod tests {
 		assert_eq!(dma.active, false);
 		assert_eq!(dma.current_index, 0);
 
-		// Test transfer doesn't start if dma isn't active
+		// Test start_transfer activates dma
 		dma.start_transfer();
 		assert_eq!(dma.active, true);
 
@@ -76,8 +74,8 @@ mod tests {
 		assert_eq!(ram[DESTINATION_START_ADDRESS], loaded_value);
 
 		// Almost finish
-		dma.tick_transfer(&mut ram, 0x9F - 2);
-		assert_eq!(dma.current_index, 0x9F - 1);
+		dma.tick_transfer(&mut ram, MAX_LOWER_NIBBLE - 1);
+		assert_eq!(dma.current_index, MAX_LOWER_NIBBLE);
 
 		// Finish (and over finish)
 		dma.tick_transfer(&mut ram, 999);
@@ -85,9 +83,10 @@ mod tests {
 		assert_eq!(dma.current_index, 0);
 
 		// Assert every address is correct
-		for i in 0..MAX_LOWER_NIBBLE {
+		for i in 0..=MAX_LOWER_NIBBLE {
 			assert_eq!(ram[DESTINATION_START_ADDRESS + i], loaded_value);
 		}
-		assert_eq!(ram[DESTINATION_START_ADDRESS + MAX_LOWER_NIBBLE], 0);
+		assert_eq!(ram[DESTINATION_START_ADDRESS + MAX_LOWER_NIBBLE], loaded_value);
+		assert_eq!(ram[DESTINATION_START_ADDRESS + MAX_LOWER_NIBBLE + 1], 0);
 	}
 }
