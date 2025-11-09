@@ -120,7 +120,6 @@ impl PPU {
 		if self.current_scanline == TOTAL_SCAN_LINES {
 			// TODO: Handle frame end
 			self.current_scanline = 0;
-			ram.clear_interrupt(Interrupt::VBlank);
 		}
 
 		self.handle_lcd_update(ram);
