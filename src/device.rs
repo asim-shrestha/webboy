@@ -48,14 +48,21 @@ impl Device {
 		self.cpu.registers.pc = 0x0100;
 
 		// TODO: Remove this. The below simulates VBlank progress. Once our PPU is online we don't need to worry about that shit
-		self.cpu.ram[0xFF44] = 0x90; // Set LY to simulate some VBlank progress
+		self.cpu.ram.write(0xFF44, 0x90); // Set LY to simulate some VBlank progress
 	}
 
 	pub fn tick(&mut self) {
+		// The CPU is suspended during DMA transfers
 		let m_cycles = self.cpu.execute(false);
+		self.dma.tick_transfer(&mut self.cpu.ram, m_cycles);
+
 		self.ppu.tick(m_cycles, &mut self.cpu.ram);
 		// TODO: Handle activating DMA based on ram update
-		self.dma.tick_transfer(&mut self.cpu.ram, m_cycles);
+
+		if self.cpu.ram.dma_requested() {
+			self.cpu.ram.clear_dma_request();
+			self.dma.start_transfer();
+		}
 
 		// Only send frame data every ~70224 dots (60 FPS)
 		// Each M-cycle = 4 dots, so send every ~17556 ticks
