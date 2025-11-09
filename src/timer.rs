@@ -28,7 +28,7 @@ impl Timer {
 	}
 
 	pub fn enabled(ram: &mut Ram) -> bool {
-		(ram.read(TAC_ADDRESS) & 0b0000_0100) != 0
+		(ram.unblocked_read(TAC_ADDRESS) & 0b0000_0100) != 0
 	}
 
 	pub fn increment_cycle(&mut self, ram: &mut Ram, cycle_count: MCycles) {
@@ -43,7 +43,7 @@ impl Timer {
 
 		// DIV is always incremented at the cycle interval
 		if self.cycles_since_div >= M_CYCLES_TO_DIV_INCREMENT {
-			ram.write(DIV_ADDRESS,ram.read(DIV_ADDRESS).wrapping_add(1));
+			ram.write(DIV_ADDRESS, ram.unblocked_read(DIV_ADDRESS).wrapping_add(1));
 			self.cycles_since_div -= M_CYCLES_TO_DIV_INCREMENT;
 		}
 
@@ -52,19 +52,19 @@ impl Timer {
 		if self.cycles_since_tima >= cycles_to_tma && Timer::enabled(ram) {
 			self.cycles_since_tima -= cycles_to_tma;
 
-			let (res, overflow) = ram.read(TIMA_ADDRESS).overflowing_add(1u8);
+			let (res, overflow) = ram.unblocked_read(TIMA_ADDRESS).overflowing_add(1u8);
 			ram.write(TIMA_ADDRESS, res);
 
 			// When TIMA overflows, we reset and send an interrupt
 			if overflow {
-				ram.write(TIMA_ADDRESS, ram.read(TMA_ADDRESS));
+				ram.write(TIMA_ADDRESS, ram.unblocked_read(TMA_ADDRESS));
 				ram.request_interrupt(Interrupt::Timer);
 			}
 		}
 	}
 
 	pub fn cycles_to_tma(ram: &Ram) -> u16 {
-		let tac = ram.read(TAC_ADDRESS);
+		let tac = ram.unblocked_read(TAC_ADDRESS);
 		let control_bits = tac & 0b0000_0011;
 
 		match control_bits {
@@ -94,19 +94,19 @@ mod test {
 		ram.write(TMA_ADDRESS, 70);
 
 		timer.increment_cycle(&mut ram, 1);
-		assert_eq!(ram.read(TIMA_ADDRESS), 0, "Value should not have been incremented");
-		assert_eq!(ram.read(DIV_ADDRESS), 0, "Value should not have been incremented");
+		assert_eq!(ram.unblocked_read(TIMA_ADDRESS), 0, "Value should not have been incremented");
+		assert_eq!(ram.unblocked_read(DIV_ADDRESS), 0, "Value should not have been incremented");
 
 		// TIMA inc
 		timer.increment_cycle(&mut ram, 1);
-		assert_eq!(ram.read(TIMA_ADDRESS), 1, "Value should have been incremented");
+		assert_eq!(ram.unblocked_read(TIMA_ADDRESS), 1, "Value should have been incremented");
 		assert_eq!(timer.cycles_since_tima, 0, "TIMA Cycles should have been reset");
-		assert_eq!(ram.read(DIV_ADDRESS), 0, "Value should not have been incremented");
+		assert_eq!(ram.unblocked_read(DIV_ADDRESS), 0, "Value should not have been incremented");
 
 		// DIV inc
 		timer.increment_cycle(&mut ram, 1);
-		assert_eq!(ram.read(TIMA_ADDRESS), 1, "Value should not have been incremented");
-		assert_eq!(ram.read(DIV_ADDRESS), 1, "Value should have been incremented");
+		assert_eq!(ram.unblocked_read(TIMA_ADDRESS), 1, "Value should not have been incremented");
+		assert_eq!(ram.unblocked_read(DIV_ADDRESS), 1, "Value should have been incremented");
 		assert_eq!(timer.cycles_since_div, 0, "TIMA Cycles should have been reset");
 
 		// TIMA overflow
@@ -114,10 +114,10 @@ mod test {
 		timer.cycles_since_tima = 3;
 		timer.increment_cycle(&mut ram, 1);
 
-		assert_eq!(ram.read(TIMA_ADDRESS), 70, "Value should have been set to TMA");
+		assert_eq!(ram.unblocked_read(TIMA_ADDRESS), 70, "Value should have been set to TMA");
 		assert_eq!(timer.cycles_since_tima, 0, "TIMA Cycles should have been reset");
 		assert_eq!(timer.cycles_since_div, 1, "TIMA Cycles should have been reset");
-		assert_eq!(ram.read(0xFF0F), 0b0000_0100, "The timer interrupt request should be set");
+		assert_eq!(ram.unblocked_read(0xFF0F), 0b0000_0100, "The timer interrupt request should be set");
 	}
 
 	#[test]

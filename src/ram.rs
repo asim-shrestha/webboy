@@ -24,17 +24,32 @@ impl Interrupt {
 
 pub struct Ram {
 	data: [u8; TWO_TO_THE_16],
+	dma_requested: bool,
 }
-
 
 impl Ram {
 	pub fn new() -> Self {
 		Self {
-			data: [0; TWO_TO_THE_16]
+			data: [0; TWO_TO_THE_16],
+			dma_requested: false,
 		}
 	}
 
 	pub fn read(&self, address: u16) -> u8 {
+		if self.dma_requested && address == 0xFF46 {
+			// During a DMA request, reading the DMA register returns 0xFF
+			return 0xFF;
+		}
+
+		// During a DMA request, reading outside HRAM returns 0xFF
+		if self.dma_requested && (address < 0xFF80 || address > 0xFFFE) {
+			return 0xFF;
+		}
+
+		self.data[address as usize]
+	}
+
+	pub fn unblocked_read(&self, address: u16) -> u8 {
 		self.data[address as usize]
 	}
 
@@ -46,8 +61,16 @@ impl Ram {
 		}
 
 		if address == 0xFF46 {
-			println!("DMA transfer REQUESTED {:2X}00", value);
+			self.dma_requested = true;
 		}
+	}
+
+	pub fn dma_requested(&self) -> bool {
+		self.dma_requested
+	}
+
+	pub fn clear_dma_request(&mut self) {
+		self.dma_requested = false;
 	}
 
 	pub fn load_rom(&mut self, rom: &[u8]) {

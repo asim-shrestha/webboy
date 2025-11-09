@@ -77,3 +77,9 @@ Other roms will also take a very long time to get right
 
 I recommend first rendering out what the tile data looks like and then rendering the background tilemap
 When you render the background tilemap
+
+
+Good games to start with:
+- OpusGames simple game => Need DMA, nice to test scroll behaviour
+- Dr. Mario => You'll need the DMA implemented but you'll get to the intro screen and sample gameplay quickly
+- Tetris => Often recommended but took quite a while to actually see any data on screen

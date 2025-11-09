@@ -1356,7 +1356,6 @@ impl CPU {
 		let pending_interrupt = self.ram.pending_interrupt();
 
 		if let Some(interrupt) = pending_interrupt {
-			eprintln!("Handling interrupt: {:?} while the pc is at {:X}", interrupt, self.registers.pc);
 			self.stack_push_16(self.registers.pc);
 			self.registers.pc = interrupt.handler_address();
 			self.mode = Mode::NormalSpeed;

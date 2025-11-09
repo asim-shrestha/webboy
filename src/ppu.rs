@@ -127,7 +127,6 @@ impl PPU {
 
 	fn handle_lcd_update(&mut self, ram: &mut Ram) {
 		ram.update_ly(self.current_scanline);
-
 	}
 
 	fn handle_oam_scan(&mut self) {
