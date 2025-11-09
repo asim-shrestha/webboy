@@ -28,7 +28,7 @@ impl DMA {
 		let start_location = (ram[DMA_ADDRESS] as usize) << 8;
 
 		for _ in 0..cycles {
-			let source =  start_location + self.current_index;
+			let source = start_location + self.current_index;
 			let destination = DESTINATION_START_ADDRESS + self.current_index;
 			ram[destination] = ram[source];
 

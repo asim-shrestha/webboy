@@ -1,6 +1,6 @@
 use crate::ram::Ram;
 use crate::palette::Color;
-use crate::ppu::LCDControl;
+use crate::lcd::LCDControl;
 
 // Tile rendering unit
 pub struct TLU {
