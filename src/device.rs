@@ -52,7 +52,6 @@ impl Device {
 	}
 
 	pub fn tick(&mut self) {
-		// The CPU is suspended during DMA transfers
 		let m_cycles = self.cpu.execute(false);
 		self.dma.tick_transfer(&mut self.cpu.ram, m_cycles);
 
