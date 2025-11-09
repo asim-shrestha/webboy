@@ -46,8 +46,8 @@ fn run_test(test: &Value) {
 	set_registers(&mut cpu.registers, initial_values);
 
 	// Run operation
-	println!("Running instruction 0o{:o}", cpu.ram[cpu.registers.pc as usize]);
-	cpu.execute(true);
+	println!("Running instruction 0o{:o}", cpu.ram.read(cpu.registers.pc));
+	cpu.execute(false);
 	cpu.print_cpu();
 
 	// Validate
@@ -70,7 +70,7 @@ fn set_registers(registers: &mut Registers, initial_values: &Value) {
 fn set_ram(ram: &mut Ram, initial_values: &Value) {
 	for ram_array in initial_values["ram"].as_array().unwrap() {
 		let array_values = ram_array.as_array().unwrap();
-		ram[array_values[0].as_u64().unwrap() as usize] = array_values[1].as_u64().unwrap() as u8;
+		ram.write(array_values[0].as_u64().unwrap() as u16, array_values[1].as_u64().unwrap() as u8);
 	}
 }
 
@@ -94,7 +94,7 @@ fn assert_expected(cpu: &CPU, test: &Value) {
 	for ram_array in final_ram.as_array().unwrap() {
 		let array_values = ram_array.as_array().unwrap();
 		assert_eq!(
-			cpu.ram[array_values[0].as_u64().unwrap() as usize],
+			cpu.ram.read(array_values[0].as_u64().unwrap() as u16),
 			array_values[1].as_u64().unwrap() as u8,
 			"RAM value mismatch at address 0x{:04X}", array_values[0].as_u64().unwrap() as usize
 		);

@@ -1,6 +1,7 @@
 use std::collections::VecDeque;
 use crate::cpu::instruction::MCycles;
 use crate::ram::{Interrupt, Ram};
+use crate::lcd::{LCDControl};
 
 /// Makes graphics. Has 12 registers
 /// 160x144 pixels
@@ -38,58 +39,14 @@ struct Layers<'a> {
 // CRT style graphics will do scan-line based rendering
 
 
-pub trait LCDControl {
-	fn lcd_enabled(&self) -> bool;
-	fn window_tile_map_control(&self) -> bool;
-	fn window_enabled(&self) -> bool;
-	fn bg_and_window_tile_data_control(&self) -> bool;
-	fn bg_tile_map_control(&self) -> bool;
-	fn obj_size_control(&self) -> bool;
-	fn obj_enabled(&self) -> bool;
-	fn bg_and_window_enabled(&self) -> bool;
-}
-
-const LCDC_ADDRESS: usize = 0xFF40;
-impl LCDControl for Ram {
-	fn lcd_enabled(&self) -> bool {
-		(&self[LCDC_ADDRESS] & 0b1000_0000) != 0
-	}
-
-	fn window_tile_map_control(&self) -> bool {
-		(&self[LCDC_ADDRESS] & 0b0100_0000) != 0
-	}
-
-	fn window_enabled(&self) -> bool {
-		(&self[LCDC_ADDRESS] & 0b0010_0000) != 0
-	}
-
-	fn bg_and_window_tile_data_control(&self) -> bool {
-		(&self[LCDC_ADDRESS] & 0b0001_0000) != 0
-	}
-
-	fn bg_tile_map_control(&self) -> bool {
-		(&self[LCDC_ADDRESS] & 0b0000_1000) != 0
-	}
-
-	fn obj_size_control(&self) -> bool {
-		(&self[LCDC_ADDRESS] & 0b0000_0100) != 0
-	}
-
-	fn obj_enabled(&self) -> bool {
-		(&self[LCDC_ADDRESS] & 0b0000_0010) != 0
-	}
-
-	fn bg_and_window_enabled(&self) -> bool {
-		(&self[LCDC_ADDRESS] & 0b0000_0001) != 0
-	}
-}
 
 
 const DOTS_PER_M_CYCLE: usize = 4;
 const DOTS_PER_M_CYCLE_DOUBLE_SPEED: usize = 8;
 const DOTS_PER_60_FPS_FRAME: usize = 70_224;
 const DOTS_PER_SCAN_LINE: u16 = 456;
-const TOTAL_SCAN_LINES: u16 = 154;
+const TOTAL_SCAN_LINES: u8 = 154;
+const INTERRUPT_SCANLINE: u8 = 144;
 
 type Tile<'a> = &'a [[u8; 8]; 8];
 
@@ -101,7 +58,7 @@ enum PPUMode {
 }
 
 pub struct PPU {
-	current_scanline: u16,
+	pub current_scanline: u8,
 	current_scanline_dot: u16,
 	mode: PPUMode,
 
@@ -113,7 +70,6 @@ pub struct PPU {
 
 type DotsTaken = u8;
 
-struct LCD {}
 // 160x144 pixels
 impl PPU {
 	pub fn new() -> Self {
@@ -156,11 +112,22 @@ impl PPU {
 			self.current_scanline_dot = 0;
 		}
 
+		if self.current_scanline == INTERRUPT_SCANLINE && self.current_scanline_dot == 0 {
+			self.mode = PPUMode::VerticalBlank;
+			ram.request_interrupt(Interrupt::VBlank);
+		}
+
 		if self.current_scanline == TOTAL_SCAN_LINES {
 			// TODO: Handle frame end
-			ram.request_interrupt(Interrupt::VBlank);
 			self.current_scanline = 0;
 		}
+
+		self.handle_lcd_update(ram);
+	}
+
+	fn handle_lcd_update(&mut self, ram: &mut Ram) {
+		ram.update_ly(self.current_scanline);
+
 	}
 
 	fn handle_oam_scan(&mut self) {

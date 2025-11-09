@@ -8,3 +8,4 @@ mod input;
 mod rom;
 mod timer;
 pub mod dma;
+pub mod lcd;

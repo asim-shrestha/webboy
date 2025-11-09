@@ -3,12 +3,12 @@ use crate::ram::Ram;
 
 pub struct DMA {
 	pub active: bool,
-	pub current_index: usize,
+	pub current_index: u16,
 }
 
-const DMA_ADDRESS: usize = 0xFF46;
-const DESTINATION_START_ADDRESS: usize = 0xFE00;
-const MAX_LOWER_NIBBLE: usize = 0x9F;
+const DMA_ADDRESS: u16 = 0xFF46;
+const DESTINATION_START_ADDRESS: u16 = 0xFE00;
+const MAX_LOWER_NIBBLE: u16 = 0x9F;
 
 impl DMA {
 	pub fn new() -> Self {
@@ -25,12 +25,12 @@ impl DMA {
 	pub fn tick_transfer(&mut self, ram: &mut Ram, cycles: MCycles) {
 		if !self.active { return; }
 
-		let start_location = (ram[DMA_ADDRESS] as usize) << 8;
+		let start_location: u16 = (ram.read(DMA_ADDRESS) as u16) << 8;
 
 		for _ in 0..cycles {
-			let source =  start_location + self.current_index;
+			let source = start_location + self.current_index;
 			let destination = DESTINATION_START_ADDRESS + self.current_index;
-			ram[destination] = ram[source];
+			ram.write(destination,  ram.read(source));
 
 			self.current_index += 1;
 
@@ -52,10 +52,10 @@ mod tests {
 	fn test_dma() {
 		let loaded_value = 69;
 		let mut ram = Ram::new();
-		ram[DMA_ADDRESS] = 0x80;
+		ram.write(DMA_ADDRESS, 0x80);
 
 		for i in 0..=0x9F {
-			ram[0x8000 + i] = loaded_value;
+			ram.write(0x8000 + i, loaded_value);
 		}
 
 		// Test init values
@@ -71,10 +71,10 @@ mod tests {
 		dma.start_transfer();
 		dma.tick_transfer(&mut ram, 1);
 		assert_eq!(dma.current_index, 1);
-		assert_eq!(ram[DESTINATION_START_ADDRESS], loaded_value);
+		assert_eq!(ram.read(DESTINATION_START_ADDRESS), loaded_value);
 
 		// Almost finish
-		dma.tick_transfer(&mut ram, MAX_LOWER_NIBBLE - 1);
+		dma.tick_transfer(&mut ram, (MAX_LOWER_NIBBLE - 1) as MCycles);
 		assert_eq!(dma.current_index, MAX_LOWER_NIBBLE);
 
 		// Finish (and over finish)
@@ -84,9 +84,9 @@ mod tests {
 
 		// Assert every address is correct
 		for i in 0..=MAX_LOWER_NIBBLE {
-			assert_eq!(ram[DESTINATION_START_ADDRESS + i], loaded_value);
+			assert_eq!(ram.read(DESTINATION_START_ADDRESS + i), loaded_value);
 		}
-		assert_eq!(ram[DESTINATION_START_ADDRESS + MAX_LOWER_NIBBLE], loaded_value);
-		assert_eq!(ram[DESTINATION_START_ADDRESS + MAX_LOWER_NIBBLE + 1], 0);
+		assert_eq!(ram.read(DESTINATION_START_ADDRESS + MAX_LOWER_NIBBLE), loaded_value);
+		assert_eq!(ram.read(DESTINATION_START_ADDRESS + MAX_LOWER_NIBBLE + 1), 0);
 	}
 }

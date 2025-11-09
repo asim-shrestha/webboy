@@ -71,22 +71,22 @@ impl CPU {
 			self.registers.l,
 			self.registers.get_sp(),
 			self.registers.pc,
-			self.ram[self.registers.pc as usize],
-			self.ram[(self.registers.pc + 1) as usize],
-			self.ram[(self.registers.pc + 2) as usize],
-			self.ram[(self.registers.pc + 3) as usize]
+			self.ram.read(self.registers.pc),
+			self.ram.read(self.registers.pc + 1),
+			self.ram.read(self.registers.pc + 2),
+			self.ram.read(self.registers.pc + 3)
 		)
 	}
 
 	fn read_byte(&mut self) -> u8 {
-		let data = self.ram[self.registers.pc as usize];
+		let data = self.ram.read(self.registers.pc);
 		self.registers.pc += 1;
 
 		data
 	}
 
 	fn read_two_bytes(&mut self) -> u16 {
-		let data = u16::from_le_bytes([self.ram[self.registers.pc as usize], self.ram[(self.registers.pc + 1) as usize]]);
+		let data = u16::from_le_bytes([self.ram.read(self.registers.pc), self.ram.read(self.registers.pc + 1)]);
 		self.registers.pc += 2;
 
 		data
@@ -300,7 +300,7 @@ impl CPU {
 	}
 
 	fn add_a_hl(&mut self, _: &Instruction) -> MCycles {
-		let src = self.ram[self.registers.get_hl() as usize];
+		let src = self.ram.read(self.registers.get_hl());
 		self.alu_add_a(src, false);
 
 		2
@@ -321,7 +321,7 @@ impl CPU {
 	}
 
 	fn addc_a_hl(&mut self, _: &Instruction) -> MCycles {
-		let src = self.ram[self.registers.get_hl() as usize];
+		let src = self.ram.read(self.registers.get_hl());
 		self.alu_add_a(src, true);
 
 		2
@@ -373,7 +373,7 @@ impl CPU {
 	}
 
 	fn sub_a_hl(&mut self, _: &Instruction) -> MCycles {
-		let src = self.ram[self.registers.get_hl() as usize];
+		let src = self.ram.read(self.registers.get_hl());
 		self.alu_sub_a(src, false);
 
 		2
@@ -394,7 +394,7 @@ impl CPU {
 	}
 
 	fn subc_a_hl(&mut self, _: &Instruction) -> MCycles {
-		let src = self.ram[self.registers.get_hl() as usize];
+		let src = self.ram.read(self.registers.get_hl());
 		self.alu_sub_a(src, true);
 
 		2
@@ -440,7 +440,7 @@ impl CPU {
 	}
 
 	fn and_a_hl(&mut self, _: &Instruction) -> MCycles {
-		let src = self.ram[self.registers.get_hl() as usize];
+		let src = self.ram.read(self.registers.get_hl());
 		self.alu_and_a(src);
 
 		2
@@ -470,7 +470,7 @@ impl CPU {
 	}
 
 	fn xor_a_hl(&mut self, _: &Instruction) -> MCycles {
-		let src = self.ram[self.registers.get_hl() as usize];
+		let src = self.ram.read(self.registers.get_hl());
 		self.alu_xor_a(src);
 
 		2
@@ -500,7 +500,7 @@ impl CPU {
 	}
 
 	fn or_a_hl(&mut self, _: &Instruction) -> MCycles {
-		let src = self.ram[self.registers.get_hl() as usize];
+		let src = self.ram.read(self.registers.get_hl());
 		self.alu_or_a(src);
 
 		2
@@ -530,7 +530,7 @@ impl CPU {
 	}
 
 	fn cp_a_hl(&mut self, _: &Instruction) -> MCycles {
-		let value = self.ram[self.registers.get_hl() as usize];
+		let value = self.ram.read(self.registers.get_hl());
 		self.alu_cp_a(value);
 
 		2
@@ -567,11 +567,10 @@ impl CPU {
 
 	fn inc_hl(&mut self, _: &Instruction) -> MCycles {
 		let location = self.registers.get_hl();
-		let byte = &mut self.ram[location as usize];
+		let prev = self.ram.read(location);
 
-		let prev = *byte;
-		let (res, _) = byte.overflowing_add(1);
-		*byte = res;
+		let (res, _) = prev.overflowing_add(1);
+		self.ram.write(location, res);
 
 		self.registers.set_flag(Flag::Zero, res == 0);
 		self.registers.set_flag(Flag::Subtraction, false);
@@ -604,11 +603,10 @@ impl CPU {
 
 	fn dec_hl(&mut self, _: &Instruction) -> MCycles {
 		let location = self.registers.get_hl();
-		let byte = &mut self.ram[location as usize];
+		let prev = self.ram.read(location);
 
-		let prev = *byte;
-		let (res, _) = byte.overflowing_sub(1);
-		*byte = res;
+		let (res, _) = prev.overflowing_sub(1);
+		self.ram.write(location, res);
 
 		self.registers.set_flag(Flag::Zero, res == 0);
 		self.registers.set_flag(Flag::Subtraction, true);
@@ -674,7 +672,7 @@ impl CPU {
 	fn ld_hl_r8(&mut self, instruction: &Instruction) -> MCycles {
 		let value_to_load = *self.registers.get_r8(instruction.last_u3());
 		let location = self.registers.get_hl();
-		self.ram[location as usize] = value_to_load;
+		self.ram.write(location, value_to_load);
 
 		2
 	}
@@ -682,7 +680,7 @@ impl CPU {
 	fn ld_hl_n8(&mut self, _: &Instruction) -> MCycles {
 		let value_to_load = self.read_byte();
 		let location = self.registers.get_hl();
-		self.ram[location as usize] = value_to_load;
+		self.ram.write(location, value_to_load);
 
 		3
 	}
@@ -697,7 +695,7 @@ impl CPU {
 	fn ld_r8_hl(&mut self, instruction: &Instruction) -> MCycles {
 		let location = self.registers.get_hl();
 		let register = self.registers.get_r8(instruction.middle_u3());
-		*register = self.ram[location as usize];
+		*register = self.ram.read(location);
 
 		2
 	}
@@ -705,7 +703,7 @@ impl CPU {
 	fn ld_r16_a(&mut self, instruction: &Instruction) -> MCycles {
 		let value_to_load = self.registers.a;
 		let location = self.registers.get_r16(instruction.interleaved_r16(true));
-		self.ram[location as usize] = value_to_load;
+		self.ram.write(location, value_to_load);
 
 		2
 	}
@@ -713,16 +711,16 @@ impl CPU {
 	fn ld_n16_a(&mut self, _: &Instruction) -> MCycles {
 		let value_to_load = self.registers.a;
 		let location = self.read_two_bytes();
-		self.ram[location as usize] = value_to_load;
+		self.ram.write(location, value_to_load);
 
 		4
 	}
 
 	fn ld_a16_sp(&mut self, _: &Instruction) -> MCycles {
 		let [lo, hi] = self.registers.get_sp().to_le_bytes();
-		let location = self.read_two_bytes() as usize;
-		self.ram[location] = lo;
-		self.ram[location + 1] = hi;
+		let location = self.read_two_bytes();
+		self.ram.write(location, lo);
+		self.ram.write(location + 1, hi);
 
 		5
 	}
@@ -731,7 +729,7 @@ impl CPU {
 		let location = self.read_byte();
 		let location = 0xFF00 + location as u16;
 		let value_to_load = self.registers.a;
-		self.ram[location as usize] = value_to_load;
+		self.ram.write(location, value_to_load);
 
 		3
 	}
@@ -739,21 +737,21 @@ impl CPU {
 	fn ldh_c_a(&mut self, _: &Instruction) -> MCycles {
 		let c = self.registers.c as u16;
 		let location = 0xFF00 + c;
-		self.ram[location as usize] = self.registers.a;
+		self.ram.write(location, self.registers.a);
 
 		2
 	}
 
 	fn ld_a_r16(&mut self, instruction: &Instruction) -> MCycles {
 		let location = self.registers.get_r16(instruction.interleaved_r16(false));
-		self.registers.a = self.ram[location as usize];
+		self.registers.a = self.ram.read(location);
 
 		2
 	}
 
 	fn ld_a_n16(&mut self, _: &Instruction) -> MCycles {
 		let location = self.read_two_bytes();
-		self.registers.a = self.ram[location as usize];
+		self.registers.a = self.ram.read(location);
 
 		4
 	}
@@ -761,7 +759,7 @@ impl CPU {
 	fn ldh_a_a16(&mut self, _: &Instruction) -> MCycles {
 		let location = self.read_byte();
 		let location = 0xFF00 + location as u16;
-		self.registers.a = self.ram[location as usize];
+		self.registers.a = self.ram.read(location);
 
 		3
 	}
@@ -770,7 +768,7 @@ impl CPU {
 		let c = self.registers.c as u16;
 		let location = 0xFF00 + c;
 
-		self.registers.a = self.ram[location as usize];
+		self.registers.a = self.ram.read(location);
 
 		2
 	}
@@ -830,7 +828,7 @@ impl CPU {
 	fn bit_u3_hl(&mut self, instruction: &Instruction) -> MCycles {
 		let bit_index = instruction.middle_u3();
 		let location = self.registers.get_hl();
-		let value = self.ram[location as usize];
+		let value = self.ram.read(location);
 		self.alu_bit_u3(bit_index, value);
 
 		3
@@ -855,9 +853,9 @@ impl CPU {
 	fn res_u3_hl(&mut self, instruction: &Instruction) -> MCycles {
 		let bit_mask = 1 << instruction.middle_u3();
 		let location = self.registers.get_hl();
-		let memory = &mut self.ram[location as usize];
+		let data = self.ram.read(location);
 
-		*memory &= !bit_mask;
+		self.ram.write(location, data & !bit_mask);
 		4
 	}
 
@@ -872,9 +870,9 @@ impl CPU {
 	fn set_u3_hl(&mut self, instruction: &Instruction) -> MCycles {
 		let bit_mask = 1 << instruction.middle_u3();
 		let location = self.registers.get_hl();
-		let memory = &mut self.ram[location as usize];
+		let data = self.ram.read(location);
 
-		*memory |= bit_mask;
+		self.ram.write(location, data | bit_mask);
 		4
 	}
 
@@ -887,9 +885,9 @@ impl CPU {
 	}
 
 	fn rl_hl(&mut self, _: &Instruction) -> MCycles {
-		let value = self.ram[self.registers.get_hl() as usize];
+		let value = self.ram.read(self.registers.get_hl());
 		let res = self.alu_rotate(value, Direction::LEFT, RotateType::RotateThroughCarry);
-		self.ram[self.registers.get_hl() as usize] = res;
+		self.ram.write(self.registers.get_hl(), res);
 
 		4
 	}
@@ -913,9 +911,9 @@ impl CPU {
 	}
 
 	fn rlc_hl(&mut self, _: &Instruction) -> MCycles {
-		let value = self.ram[self.registers.get_hl() as usize];
+		let value = self.ram.read(self.registers.get_hl());
 		let res = self.alu_rotate(value, Direction::LEFT, RotateType::RotateWithoutCarry);
-		self.ram[self.registers.get_hl() as usize] = res;
+		self.ram.write(self.registers.get_hl(), res);
 
 		4
 	}
@@ -939,9 +937,9 @@ impl CPU {
 	}
 
 	fn sla_hl(&mut self, _: &Instruction) -> MCycles {
-		let value = self.ram[self.registers.get_hl() as usize];
+		let value = self.ram.read(self.registers.get_hl());
 		let res = self.alu_rotate(value, Direction::LEFT, RotateType::Shift);
-		self.ram[self.registers.get_hl() as usize] = res;
+		self.ram.write(self.registers.get_hl(), res);
 
 		4
 	}
@@ -955,9 +953,9 @@ impl CPU {
 	}
 
 	fn rr_hl(&mut self, _: &Instruction) -> MCycles {
-		let value = self.ram[self.registers.get_hl() as usize];
+		let value = self.ram.read(self.registers.get_hl());
 		let res = self.alu_rotate(value, Direction::RIGHT, RotateType::RotateThroughCarry);
-		self.ram[self.registers.get_hl() as usize] = res;
+		self.ram.write(self.registers.get_hl(), res);
 
 		4
 	}
@@ -981,9 +979,9 @@ impl CPU {
 	}
 
 	fn rrc_hl(&mut self, _: &Instruction) -> MCycles {
-		let value = self.ram[self.registers.get_hl() as usize];
+		let value = self.ram.read(self.registers.get_hl());
 		let res = self.alu_rotate(value, Direction::RIGHT, RotateType::RotateWithoutCarry);
-		self.ram[self.registers.get_hl() as usize] = res;
+		self.ram.write(self.registers.get_hl(), res);
 
 		4
 	}
@@ -1011,13 +1009,13 @@ impl CPU {
 	}
 
 	fn sra_hl(&mut self, _: &Instruction) -> MCycles {
-		let value = self.ram[self.registers.get_hl() as usize];
+		let value = self.ram.read(self.registers.get_hl());
 		let mut res = self.alu_rotate(value, Direction::RIGHT, RotateType::Shift);
 
 		let bit_7_mask = value & 0b1000_0000;
 		res = if bit_7_mask > 0 { res | bit_7_mask } else { res & !bit_7_mask };
 
-		self.ram[self.registers.get_hl() as usize] = res;
+		self.ram.write(self.registers.get_hl(), res);
 
 		4
 	}
@@ -1031,9 +1029,9 @@ impl CPU {
 	}
 
 	fn srl_hl(&mut self, _: &Instruction) -> MCycles {
-		let value = self.ram[self.registers.get_hl() as usize];
+		let value = self.ram.read(self.registers.get_hl());
 		let res = self.alu_rotate(value, Direction::RIGHT, RotateType::Shift);
-		self.ram[self.registers.get_hl() as usize] = res;
+		self.ram.write(self.registers.get_hl(), res);
 
 		4
 	}
@@ -1068,9 +1066,9 @@ impl CPU {
 	}
 
 	fn swap_hl(&mut self, _: &Instruction) -> MCycles {
-		let value = self.ram[self.registers.get_hl() as usize];
+		let value = self.ram.read(self.registers.get_hl());
 		let res = self.alu_swap(value);
-		self.ram[self.registers.get_hl() as usize] = res;
+		self.ram.write(self.registers.get_hl(), res);
 
 		4
 	}
@@ -1173,8 +1171,8 @@ impl CPU {
 		let mut sp = self.registers.get_sp();
 		sp = sp.wrapping_sub(2);
 
-		self.ram[sp as usize] = bytes[0];
-		self.ram[(sp + 1) as usize] = bytes[1];
+		self.ram.write(sp, bytes[0]);
+		self.ram.write(sp + 1, bytes[1]);
 
 		self.registers.set_sp(sp);
 	}
@@ -1197,7 +1195,7 @@ impl CPU {
 
 	fn stack_pop_16(&mut self) -> u16 {
 		let mut sp = self.registers.get_sp();
-		let values = [self.ram[sp as usize], self.ram[(sp + 1) as usize]];
+		let values = [self.ram.read(sp), self.ram.read(sp + 1)];
 		let value = u16::from_le_bytes(values);
 		sp = sp.wrapping_add(2);
 		self.registers.set_sp(sp);
@@ -1416,10 +1414,10 @@ mod test {
 	#[test]
 	fn test_pc() {
 		let mut cpu = CPU::new();
-		cpu.ram[0] = 0b0000_1001;
-		cpu.ram[1] = 0b1100_1100;
-		cpu.ram[2] = 0b1101_1100;
-		cpu.ram[3] = 0b0001_1100;
+		cpu.ram.write(0, 0b0000_1001);
+		cpu.ram.write(1, 0b1100_1100);
+		cpu.ram.write(2, 0b1101_1100);
+		cpu.ram.write(3, 0b0001_1100);
 
 		assert_eq!(cpu.registers.pc, 0);
 		assert_eq!(cpu.read_byte(), 0b0000_1001);
@@ -1436,7 +1434,7 @@ mod test {
 	fn test_add_a_r8() {
 		// Add 0 to 'A' register
 		let mut cpu = CPU::new();
-		cpu.ram[0] = 0o200;
+		cpu.ram.write(0, 0o200);
 		let (instruction, op) = cpu.get_operation();
 		assert!(fn_addr_eq(op, CPU::add_a_r8 as InstructionHandler));
 
@@ -1466,7 +1464,7 @@ mod test {
 	#[test]
 	fn test_addc_a_a8() {
 		let mut cpu = CPU::new();
-		cpu.ram[0] = 0o210; // ADC A, B
+		cpu.ram.write(0, 0o210); // ADC A, B
 		let (instruction, operation) = cpu.get_operation();
 		assert!(fn_addr_eq(operation, CPU::addc_a_r8 as InstructionHandler));
 
@@ -1484,7 +1482,7 @@ mod test {
 	#[test]
 	fn test_add_hl_r16() {
 		let mut cpu = CPU::new();
-		cpu.ram[0] = 0o031;
+		cpu.ram.write(0, 0o031);
 		let (instruction, operation) = cpu.get_operation();
 		assert!(fn_addr_eq(operation, CPU::add_hl_r16 as InstructionHandler));
 
@@ -1538,7 +1536,7 @@ mod test {
 	#[test]
 	fn test_sub_a_r8() {
 		let mut cpu = CPU::new();
-		cpu.ram[0] = 0o220;
+		cpu.ram.write(0, 0o220);
 		let (instruction, op) = cpu.get_operation();
 		assert!(fn_addr_eq(op, CPU::sub_a_r8 as InstructionHandler));
 
@@ -1569,7 +1567,7 @@ mod test {
 	#[test]
 	fn test_subc_a_a8() {
 		let mut cpu = CPU::new();
-		cpu.ram[0] = 0o235;
+		cpu.ram.write(0, 0o235);
 		let (instruction, op) = cpu.get_operation();
 		assert!(fn_addr_eq(op, CPU::subc_a_r8 as InstructionHandler));
 
@@ -1588,7 +1586,7 @@ mod test {
 	#[test]
 	fn test_cpl() {
 		let mut cpu = CPU::new();
-		cpu.ram[0] = 0o057;
+		cpu.ram.write(0, 0o057);
 		let (instruction, op) = cpu.get_operation();
 		assert!(fn_addr_eq(op, CPU::cpl as InstructionHandler));
 		cpu.registers.f = 0b1111_0000; // Pre-set all flag bits
@@ -1606,7 +1604,7 @@ mod test {
 	#[test]
 	fn test_and() {
 		let mut cpu = CPU::new();
-		cpu.ram[0] = 0o241;
+		cpu.ram.write(0, 0o241);
 		let (instruction, op) = cpu.get_operation();
 		assert!(fn_addr_eq(op, CPU::and_a_r8 as InstructionHandler));
 		cpu.registers.f = 0b0101_0000; // Test that these values get overrode
@@ -1629,7 +1627,7 @@ mod test {
 	#[test]
 	fn test_xor_a_r8() {
 		let mut cpu = CPU::new();
-		cpu.ram[0] = 0o252;
+		cpu.ram.write(0, 0o252);
 		let (instruction, op) = cpu.get_operation();
 		assert!(fn_addr_eq(op, CPU::xor_a_r8 as InstructionHandler));
 		cpu.registers.f = 0b1111_0000; // Test that these values get overrode
@@ -1655,7 +1653,7 @@ mod test {
 	#[test]
 	fn test_or_a_r8() {
 		let mut cpu = CPU::new();
-		cpu.ram[0] = 0o263;
+		cpu.ram.write(0, 0o263);
 		let (instruction, op) = cpu.get_operation();
 		assert!(fn_addr_eq(op, CPU::or_a_r8 as InstructionHandler));
 		cpu.registers.f = 0b1111_0000; // Test that these values get overrode
@@ -1681,7 +1679,7 @@ mod test {
 	#[test]
 	fn test_inc() {
 		let mut cpu = CPU::new();
-		cpu.ram[0] = 0o04;
+		cpu.ram.write(0, 0o04);
 		let (instruction, op) = cpu.get_operation();
 		assert!(fn_addr_eq(op, CPU::inc_r8 as InstructionHandler));
 
@@ -1705,8 +1703,8 @@ mod test {
 	#[test]
 	fn test_inc_r16_and_dec_r16() {
 		let mut cpu = CPU::new();
-		cpu.ram[0] = 0o063;
-		cpu.ram[1] = 0o073;
+		cpu.ram.write(0, 0o063);
+		cpu.ram.write(1, 0o073);
 		let (inc_instruction, inc_operation) = cpu.get_operation();
 		let (dec_instruction, dec_operation) = cpu.get_operation();
 		assert!(fn_addr_eq(inc_operation, CPU::inc_r16 as InstructionHandler));
@@ -1722,8 +1720,8 @@ mod test {
 	#[test]
 	fn test_dec() {
 		let mut cpu = CPU::new();
-		cpu.ram[0] = 0o05;
-		let (instruction, op) = cpu.get_operation();
+		cpu.ram.write(0, 0o05);
+		let (_, op) = cpu.get_operation();
 		assert!(fn_addr_eq(op, CPU::dec_r8 as InstructionHandler));
 
 		cpu.registers.a = 1;
@@ -1748,7 +1746,7 @@ mod test {
 	#[test]
 	fn test_ld_r8_r8() {
 		let mut cpu = CPU::new();
-		cpu.ram[0] = 0o100;
+		cpu.ram.write(0, 0o100);
 
 		let (instruction, operation) = cpu.get_operation();
 		assert!(fn_addr_eq(operation, CPU::ld_r8_r8 as InstructionHandler));
@@ -1818,7 +1816,7 @@ mod test {
 	fn test_ld_hl_r8() {
 		// Load b on to b
 		let mut cpu = CPU::new();
-		cpu.ram[0] = 0o163;
+		cpu.ram.write(0, 0o163);
 		let (instruction, op) = cpu.get_operation();
 		assert!(fn_addr_eq(op, CPU::ld_hl_r8 as InstructionHandler));
 
@@ -1832,13 +1830,13 @@ mod test {
 		cpu.registers.e = value;
 		cpu.registers.f = 0b1111_0000;
 		cpu.run_operation((instruction, op));
-		assert_eq!(cpu.ram[location as usize], value);
+		assert_eq!(cpu.ram.read(location), value);
 		assert_eq!(cpu.registers.f, 0b1111_0000);
 
 		// Load 0 back
 		cpu.registers.e = 0;
 		cpu.run_operation((instruction, op));
-		assert_eq!(cpu.ram[location as usize], 0);
+		assert_eq!(cpu.ram.read(location), 0);
 	}
 
 	#[test]
@@ -1857,7 +1855,7 @@ mod test {
 
 		// Perform op
 		cpu.run_operation((instruction, op));
-		assert_eq!(cpu.ram[location as usize], value);
+		assert_eq!(cpu.ram.read(location), value);
 	}
 
 	#[test]
@@ -1890,7 +1888,7 @@ mod test {
 	fn test_cp_a_r8() {
 		// Compare A with D
 		let mut cpu = CPU::new();
-		cpu.ram[0] = 0o272;
+		cpu.ram.write(0, 0o272);
 		let (instruction, op) = cpu.get_operation();
 		assert!(fn_addr_eq(op, CPU::cp_a_r8 as InstructionHandler));
 
@@ -1942,7 +1940,7 @@ mod test {
 
 		// RLA
 		let mut cpu = CPU::new();
-		cpu.ram[0] = 0o027;
+		cpu.ram.write(0, 0o027);
 		let (_, op) = cpu.get_operation();
 		assert!(fn_addr_eq(op, CPU::rl_a as InstructionHandler));
 
@@ -1954,7 +1952,7 @@ mod test {
 
 		// RLC A
 		let mut cpu = CPU::new();
-		cpu.ram[0] = 0o007;
+		cpu.ram.write(0, 0o007);
 		let (_, op) = cpu.get_operation();
 		assert!(fn_addr_eq(op, CPU::rlc_a as InstructionHandler));
 	}
@@ -2011,7 +2009,7 @@ mod test {
 
 		// RRA
 		let mut cpu = CPU::new();
-		cpu.ram[0] = 0o037;
+		cpu.ram.write(0, 0o037);
 		let (_, op) = cpu.get_operation();
 		assert!(fn_addr_eq(op, CPU::rr_a as InstructionHandler));
 
@@ -2023,7 +2021,7 @@ mod test {
 
 		// RRC A
 		let mut cpu = CPU::new();
-		cpu.ram[0] = 0o017;
+		cpu.ram.write(0, 0o017);
 		let (_, op) = cpu.get_operation();
 		assert!(fn_addr_eq(op, CPU::rrc_a as InstructionHandler));
 
@@ -2171,8 +2169,8 @@ mod test {
 		cpu.run_operation((instruction, op));
 		assert_eq!(cpu.registers.get_sp(), 98);
 		assert_eq!(cpu.registers.pc, 0b1111_0110);
-		assert_eq!(cpu.ram[99], 0);
-		assert_eq!(cpu.ram[98], 6);
+		assert_eq!(cpu.ram.read(99), 0);
+		assert_eq!(cpu.ram.read(98), 6);
 	}
 
 	#[test]
@@ -2203,16 +2201,16 @@ mod test {
 		cpu.registers.e = 0b1010_1010;
 		cpu.run_operation((instruction, op));
 		assert_eq!(cpu.registers.get_sp(), 98);
-		assert_eq!(cpu.ram[99], 0b1111_0000);
-		assert_eq!(cpu.ram[98], 0b1010_1010);
+		assert_eq!(cpu.ram.read(99), 0b1111_0000);
+		assert_eq!(cpu.ram.read(98), 0b1010_1010);
 
 		cpu.registers.a = 0b0000_1111;
 		cpu.registers.f = 0b0101_1111;
 		let (instruction, op) = cpu.get_operation();
 		cpu.run_operation((instruction, op));
 		assert_eq!(cpu.registers.get_sp(), 96);
-		assert_eq!(cpu.ram[97], 0b0000_1111);
-		assert_eq!(cpu.ram[96], 0b0101_0000);
+		assert_eq!(cpu.ram.read(97), 0b0000_1111);
+		assert_eq!(cpu.ram.read(96), 0b0101_0000);
 	}
 
 	#[test]
@@ -2243,25 +2241,25 @@ mod test {
 	fn test_j() {
 		// JP n16
 		let mut cpu = CPU::new();
-		cpu.ram[0] = 0o303;
+		cpu.ram.write(0, 0o303);
 		let (_, op) = cpu.get_operation();
 		assert!(fn_addr_eq(op, CPU::jp_n16 as InstructionHandler));
 
 		// JP HL
 		let mut cpu = CPU::new();
-		cpu.ram[0] = 0o351;
+		cpu.ram.write(0, 0o351);
 		let (_, op) = cpu.get_operation();
 		assert!(fn_addr_eq(op, CPU::jp_hl as InstructionHandler));
 
 		// JP cc n16
 		let mut cpu = CPU::new();
-		cpu.ram[0] = 0o302;
+		cpu.ram.write(0, 0o302);
 		let (_, op) = cpu.get_operation();
 		assert!(fn_addr_eq(op, CPU::jp_cc_n16 as InstructionHandler));
 
 		// JR n16
 		let mut cpu = CPU::new();
-		cpu.ram[0] = 0o030;
+		cpu.ram.write(0, 0o030);
 		let (_, op) = cpu.get_operation();
 		assert!(fn_addr_eq(op, CPU::jr_n16 as InstructionHandler));
 	}
@@ -2322,16 +2320,16 @@ mod test {
 
 		// Run with bit set
 		cpu.registers.set_hl(10);
-		cpu.ram[10] = 0b0100_0000;
+		cpu.ram.write(10, 0b0100_0000);
 		cpu.run_operation((instruction, op));
 		assert_eq!(cpu.registers.f, 0b0010_0000);
 
 		// Run with bit unset
-		cpu.ram[10] = 0b1011_1111;
+		cpu.ram.write(10, 0b1011_1111);
 		cpu.run_operation((instruction, op));
 		assert_eq!(cpu.registers.f, 0b1010_0000);
 
-		cpu.ram[10] = 0b0000_0000;
+		cpu.ram.write(10, 0b0000_0000);
 		cpu.run_operation((instruction, op));
 		assert_eq!(cpu.registers.f, 0b1010_0000);
 	}
@@ -2362,13 +2360,13 @@ mod test {
 
 		// Run with bit set
 		cpu.registers.set_hl(25);
-		cpu.ram[25] = 0b0110_0101;
+		cpu.ram.write(25, 0b0110_0101);
 		cpu.run_operation((instruction, op));
-		assert_eq!(cpu.ram[25], 0b0110_0001);
+		assert_eq!(cpu.ram.read(25), 0b0110_0001);
 
 		// Run with bit unset
 		cpu.run_operation((instruction, op));
-		assert_eq!(cpu.ram[25], 0b0110_0001);
+		assert_eq!(cpu.ram.read(25), 0b0110_0001);
 	}
 
 	#[test]
@@ -2397,21 +2395,13 @@ mod test {
 
 		// Run with bit set
 		cpu.registers.set_hl(25);
-		cpu.ram[25] = 0b0110_0001;
+		cpu.ram.write(25, 0b0110_0001);
 		cpu.run_operation((instruction, op));
-		assert_eq!(cpu.ram[25], 0b0110_0101);
+		assert_eq!(cpu.ram.read(25), 0b0110_0101);
 
 		// Run with bit unset
 		cpu.run_operation((instruction, op));
-		assert_eq!(cpu.ram[25], 0b0110_0101);
-	}
-
-	#[test]
-	#[should_panic]
-	fn test_panics_for_unknown() {
-		let mut cpu = CPU::new();
-		cpu.ram[0] = 0o374;
-		cpu.get_operation();
+		assert_eq!(cpu.ram.read(25), 0b0110_0101);
 	}
 
 	#[test]
@@ -2444,6 +2434,14 @@ mod test {
 	}
 
 	#[test]
+	fn test_no_ops_for_unknown() {
+		let mut cpu = CPU::new();
+		cpu.ram.write(0, 0o374);
+		let (_, op) = cpu.get_operation();
+		assert!(fn_addr_eq(op, CPU::no_op as InstructionHandler));
+	}
+
+	#[test]
 	fn test_halt() {
 		let mut cpu = CPU::new();
 		cpu.ram.test_load(0 , vec![0o166, 0o166, 0o306, 99]);
@@ -2456,8 +2454,8 @@ mod test {
 
 		// IME not set and interrupt pending, we get the halt bug
 		cpu.mode = NormalSpeed;
-		cpu.ram[0xFFFF] = 0b1111_1111;
-		cpu.ram[0xFF0F] = 0b1111_1111;
+		cpu.ram.write(0xFFFF, 0b1111_1111);
+		cpu.ram.write(0xFF0F, 0b1111_1111);
 		let i_data = cpu.get_operation();
 		cpu.run_operation(i_data);
 		assert_eq!(cpu.mode, NormalSpeed);
@@ -2470,13 +2468,13 @@ mod test {
 		cpu.run_operation(i_data);
 		assert_eq!(cpu.registers.a, 0o306);
 		assert_eq!(cpu.registers.pc, 3, "The program counter should be pointing to our n8 value now");
-		assert_eq!(cpu.ram[cpu.registers.pc as usize], 99);
+		assert_eq!(cpu.ram.read(cpu.registers.pc), 99);
 	}
 
 	#[test]
 	fn test_stop() {
 		let mut cpu = CPU::new();
-		cpu.ram[0] = 0o020;
+		cpu.ram.write(0, 0o020);
 		let (instruction, op) = cpu.get_operation();
 		assert!(fn_addr_eq(op, CPU::stop as InstructionHandler));
 
@@ -2488,7 +2486,7 @@ mod test {
 	#[test]
 	fn test_daa() {
 		let mut cpu = CPU::new();
-		cpu.ram[0] = 0o047;
+		cpu.ram.write(0, 0o047);
 		let (instruction, op) = cpu.get_operation();
 		assert!(fn_addr_eq(op, CPU::daa as InstructionHandler));
 
