@@ -1,4 +1,3 @@
-use std::ops::{Index, IndexMut};
 
 const TWO_TO_THE_16: usize = 65_536;
 
@@ -25,31 +24,53 @@ impl Interrupt {
 
 pub struct Ram {
 	data: [u8; TWO_TO_THE_16],
+	dma_requested: bool,
 }
-
-impl Index<usize> for Ram {
-	type Output = u8;
-
-	fn index(&self, index: usize) -> &Self::Output {
-		&self.data[index]
-	}
-}
-
-impl IndexMut<usize> for Ram {
-	fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-		if index >= 0x8000 && index <= 0x97FF {
-			// println!("Mutating index BRUHH!!: {:4X}", index);
-		}
-		&mut self.data[index]
-	}
-}
-
 
 impl Ram {
 	pub fn new() -> Self {
 		Self {
-			data: [0; TWO_TO_THE_16]
+			data: [0; TWO_TO_THE_16],
+			dma_requested: false,
 		}
+	}
+
+	pub fn read(&self, address: u16) -> u8 {
+		if self.dma_requested && address == 0xFF46 {
+			// During a DMA request, reading the DMA register returns 0xFF
+			return 0xFF;
+		}
+
+		// During a DMA request, reading outside HRAM returns 0xFF
+		if self.dma_requested && (address < 0xFF80 || address > 0xFFFE) {
+			return 0xFF;
+		}
+
+		self.data[address as usize]
+	}
+
+	pub fn unblocked_read(&self, address: u16) -> u8 {
+		self.data[address as usize]
+	}
+
+	pub fn write(&mut self, address: u16, value: u8) {
+		self.data[address as usize] = value;
+
+		if address >= 0x8000 && address <= 0x97FF {
+			// println!("Writing to VRAM at {:4X} value {:2X}", address, value);
+		}
+
+		if address == 0xFF46 {
+			self.dma_requested = true;
+		}
+	}
+
+	pub fn dma_requested(&self) -> bool {
+		self.dma_requested
+	}
+
+	pub fn clear_dma_request(&mut self) {
+		self.dma_requested = false;
 	}
 
 	pub fn load_rom(&mut self, rom: &[u8]) {
@@ -121,10 +142,10 @@ mod test {
 
 		ram.test_load(0, vec![19, 123, 73, 57]);
 
-		assert_eq!(ram[0], 19);
-		assert_eq!(ram[1], 123);
-		assert_eq!(ram[2], 73);
-		assert_eq!(ram[3], 57);
+		assert_eq!(ram.read(0), 19);
+		assert_eq!(ram.read(1), 123);
+		assert_eq!(ram.read(2), 73);
+		assert_eq!(ram.read(3), 57);
 	}
 
 	#[test]
@@ -132,24 +153,24 @@ mod test {
 		let mut ram = Ram::new();
 
 		// Enabled but none of the pending ones
-		ram[0xFFFF] = 0b1111_0000;
-		ram[0xFF0F] = 0b0000_1111;
+		ram.write(0xFFFF, 0b1111_0000);
+		ram.write(0xFF0F, 0b0000_1111);
 		assert!(ram.interrupts_enabled());
 		assert!(ram.pending_interrupt().is_none());
 
 		// Enabled a pending interrupt
-		ram[0xFFFF] = 0b1111_0010;
+		ram.write(0xFFFF, 0b1111_0010);
 		assert!(ram.interrupts_enabled());
 		assert_eq!(ram.pending_interrupt(), Some(Interrupt::Stat));
 
 		// Try clearing some interrupts
 		ram.clear_interrupt(Interrupt::Timer);
-		assert_eq!(ram[0xFF0F], 0b0000_1011);
+		assert_eq!(ram.read(0xFF0F), 0b0000_1011);
 		ram.clear_interrupt(Interrupt::VBlank);
-		assert_eq!(ram[0xFF0F], 0b0000_1010);
+		assert_eq!(ram.read(0xFF0F), 0b0000_1010);
 
 		// Try requesting interrupts back
 		ram.request_interrupt(Interrupt::Timer);
-		assert_eq!(ram[0xFF0F], 0b0000_1110);
+		assert_eq!(ram.read(0xFF0F), 0b0000_1110);
 	}
 }

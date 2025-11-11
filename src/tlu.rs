@@ -27,8 +27,8 @@ impl TLU {
 
 		for row_index in 0..8 {
 			// Each pixel is 2 bits so there is 2 bytes per row
-			let first_byte = ram[(tile_start_address + (row_index * 2)) as usize];
-			let second_byte = ram[(tile_start_address + 1 + (row_index * 2))  as usize];
+			let first_byte = ram.unblocked_read(tile_start_address + (row_index * 2));
+			let second_byte = ram.unblocked_read(tile_start_address + 1 + (row_index * 2));
 
 				for bit in 0..8 {
 					let left_bit = ((second_byte >> (7 - bit)) & 1) << 1;
@@ -67,7 +67,7 @@ impl TLU {
 			let col = (pixel_index % 32) as usize;
 
 			let tile_index_location = start + pixel_index;
-			let tile_index = ram[tile_index_location as usize];
+			let tile_index = ram.unblocked_read(tile_index_location);
 
 			let colors = TLU::get_tile_by_index(ram, tile_index);
 
