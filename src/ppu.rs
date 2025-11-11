@@ -135,6 +135,7 @@ impl PPU {
 		if self.current_scanline == TOTAL_SCAN_LINES {
 			// TODO: Handle frame end
 			self.current_scanline = 0;
+			self.mode = PPUMode::OAMScan;
 		}
 
 		PPU::handle_lcd_update(ram, self.current_scanline);
