@@ -28,7 +28,7 @@ impl DMA {
 		let start_location = (ram[DMA_ADDRESS] as usize) << 8;
 
 		for _ in 0..cycles {
-			let source =  start_location + self.current_index;
+			let source = start_location + self.current_index;
 			let destination = DESTINATION_START_ADDRESS + self.current_index;
 			ram[destination] = ram[source];
 
@@ -68,7 +68,6 @@ mod tests {
 		assert_eq!(dma.active, true);
 
 		// First tick: do a few bytes.
-		dma.start_transfer();
 		dma.tick_transfer(&mut ram, 1);
 		assert_eq!(dma.current_index, 1);
 		assert_eq!(ram[DESTINATION_START_ADDRESS], loaded_value);

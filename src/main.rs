@@ -32,8 +32,7 @@ fn webboy(rom: Vec<u8>, tx: Sender<ImageData>) {
     let mut device = Device::new(tx);
     device.load(&rom);
 
-    let max_log_test_length = 7427500;
-    for _ in 0..=max_log_test_length {
+    loop {
         device.tick();
     }
 }

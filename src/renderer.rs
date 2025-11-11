@@ -6,13 +6,14 @@ use webboy::tlu::TLUData;
 use webboy::palette;
 
 const SCALE_FACTOR: f32 = 2.0;
+const PADDING: i32 = 8;
 
 pub fn window_conf() -> Conf {
     // Configuration for the screen
     Conf {
         window_title: "Web boy".to_owned(),
-        window_width: (192) * (SCALE_FACTOR as i32) + 8,
-        window_height: (242) * (SCALE_FACTOR as i32) + 8,
+        window_width: (32 * 8) * (SCALE_FACTOR as i32) + PADDING * 2,
+        window_height: (40 * 8) * (SCALE_FACTOR as i32) + PADDING * 3,
         window_resizable: true,
         ..Default::default()
     }
@@ -33,8 +34,6 @@ pub async fn handle(rx: &Receiver<ImageData>) {
 }
 
 pub async fn render_tlu_data(tlu_data: &TLUData) {
-    let scale_factor = 1.5;
-
     let width = tlu_data.tile_data[0].len() as f32;
     let height = tlu_data.tile_data.len() as f32;
 
@@ -71,20 +70,20 @@ pub async fn render_tlu_data(tlu_data: &TLUData) {
 
     draw_texture_ex(
         &texture,
-        4.0, 4.0,
+        PADDING as f32, PADDING as f32,
         WHITE,
         DrawTextureParams {
-            dest_size: Some(vec2(width * scale_factor, height * scale_factor)),
+            dest_size: Some(vec2(width * SCALE_FACTOR, height * SCALE_FACTOR)),
             ..Default::default()
         },
     );
 
     draw_texture_ex(
         &tile_map_texture,
-        4.0, (64.0 * scale_factor) + 8.0,
+        PADDING as f32, (64.0 * SCALE_FACTOR) + (PADDING as f32 * 2.0),
         WHITE,
         DrawTextureParams {
-            dest_size: Some(vec2(tlu_data.background_data[0].len() as f32 * scale_factor, tlu_data.background_data.len() as f32 * scale_factor)),
+            dest_size: Some(vec2(tlu_data.background_data[0].len() as f32 * SCALE_FACTOR, tlu_data.background_data.len() as f32 * SCALE_FACTOR)),
             ..Default::default()
         },
     );
