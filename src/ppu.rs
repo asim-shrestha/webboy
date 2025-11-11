@@ -44,7 +44,6 @@ struct Layers<'a> {
 const DOTS_PER_M_CYCLE: usize = 4;
 const DOTS_PER_M_CYCLE_DOUBLE_SPEED: usize = 8;
 const DOTS_PER_60_FPS_FRAME: usize = 70_224;
-const DOTS_PER_SCAN_LINE: u16 = 456;
 const TOTAL_SCAN_LINES: u8 = 154;
 const SCANLINE_END_DOT: u16 = 456;
 const OAM_SCAN_END_DOT: u16 = 80;
@@ -111,13 +110,21 @@ impl PPU {
 
 		// Each line
 		if self.current_scanline_dot == SCANLINE_END_DOT {
-			self.mode = PPUMode::OAMScan;
 			self.current_scanline += 1;
 			self.current_scanline_dot = 0;
+
+			if self.current_scanline < INTERRUPT_SCANLINE {
+				self.mode = PPUMode::OAMScan;
+			}
 		}
 
-		if self.current_scanline_dot == OAM_SCAN_END_DOT {
+		if self.current_scanline_dot == OAM_SCAN_END_DOT && self.current_scanline < INTERRUPT_SCANLINE {
 			self.mode = PPUMode::DrawingPixels;
+		}
+
+		if self.current_scanline_dot == 252 && self.current_scanline < INTERRUPT_SCANLINE {
+			// TODO correctly implement drawing pixels and trigger horizontal blanks at the correct timings
+			self.mode = PPUMode::HorizontalBlank;
 		}
 
 		if self.current_scanline == INTERRUPT_SCANLINE && self.current_scanline_dot == 0 {
@@ -141,7 +148,9 @@ impl PPU {
 	fn handle_stat(&self, ram: &mut Ram) {
 		let ly = ram.unblocked_read(LY_ADDRESS);
 		let lyc = ram.unblocked_read(LYC_ADDRESS);
+		let prev_lyc_equals_ly = (ram.unblocked_read(STAT_ADDRESS) & 0b0000_0100) >> 2;
 		let prev_status = ram.unblocked_read(STAT_ADDRESS);
+		let prev_mode = prev_status & 0b0000_0011;
 
 		let lyc_equals_ly_bit = ((ly == lyc) as u8) << 2;
 		let ppu_mode_mod = if !ram.lcd_enabled() { 0 } else { self.mode as u8 };
@@ -151,19 +160,19 @@ impl PPU {
 
 		// Check interrupts
 		let mut stat_interrupt_line: bool = false;
-		if (prev_status & 0b0100_0000) > 0 {
+		if (prev_status & 0b0100_0000) > 0 && !(prev_lyc_equals_ly > 0) {
 			stat_interrupt_line |= lyc_equals_ly_bit > 0;
 		}
 
-		if (prev_status & 0b0010_0000) > 0 && (self.mode as u8) == 2 {
+		if (prev_status & 0b0010_0000) > 0 && (self.mode as u8) == PPUMode::OAMScan as u8 && prev_mode != self.mode as u8 {
 			stat_interrupt_line |= true;
 		}
 
-		if (prev_status & 0b0001_0000) > 0 && (self.mode as u8) == 1 {
+		if (prev_status & 0b0001_0000) > 0 && (self.mode as u8) == PPUMode::VerticalBlank as u8 && prev_mode != self.mode as u8 {
 			stat_interrupt_line |= true;
 		}
 
-		if (prev_status & 0b0000_1000) > 0 && (self.mode as u8) == 0 {
+		if (prev_status & 0b0000_1000) > 0 && (self.mode as u8) == PPUMode::HorizontalBlank as u8 && prev_mode != self.mode as u8 {
 			stat_interrupt_line |= true;
 		}
 
@@ -258,5 +267,16 @@ mod test {
 		ppu.handle_stat(&mut ram);
 		assert_eq!(ram.unblocked_read(STAT_ADDRESS), 0b0010_0010);
 		assert_eq!(ram.pending_interrupt(), Some(Interrupt::Stat));
+
+		ram.clear_interrupt(Interrupt::Stat);
+		assert_eq!(ram.pending_interrupt(), None);
+
+		// Test only interrupt on rising edge
+		ram.write(LYC_ADDRESS, 2); // Set LYC to something else
+		ram.write(STAT_ADDRESS, 0b1111_0001);
+		ppu.mode = PPUMode::VerticalBlank;
+		ppu.handle_stat(&mut ram);
+		assert_eq!(ram.unblocked_read(STAT_ADDRESS), 0b01111_0001);
+		assert_eq!(ram.pending_interrupt(), None);
 	}
 }
