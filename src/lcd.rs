@@ -1,6 +1,7 @@
 use crate::ram::Ram;
 
 pub trait LCDControl {
+	fn set_lcd_enabled(&mut self, enabled: bool);
 	fn lcd_enabled(&self) -> bool;
 	fn window_tile_map_control(&self) -> bool;
 	fn window_enabled(&self) -> bool;
@@ -13,6 +14,15 @@ pub trait LCDControl {
 }
 
 impl LCDControl for Ram {
+	fn set_lcd_enabled(&mut self, enabled: bool) {
+		let mut lcdc = self.unblocked_read(LCDC_ADDRESS);
+		if enabled {
+			lcdc |= 0b1000_0000;
+		} else {
+			lcdc &= !0b1000_0000;
+		}
+		self.write(LCDC_ADDRESS, lcdc);
+	}
 	fn lcd_enabled(&self) -> bool {
 		(self.unblocked_read(LCDC_ADDRESS) & 0b1000_0000) != 0
 	}
@@ -49,7 +59,7 @@ impl LCDControl for Ram {
 	}
 }
 
-const LCDC_ADDRESS: u16 = 0xFF40;
-const LY_ADDRESS: u16 = 0xFF44;
-const LYC_LY_COMPARE_ADDRESS: u16 = 0xFF45;
-const STAT_ADDRESS: u16 = 0xFF41;
+pub const LCDC_ADDRESS: u16 = 0xFF40;
+pub const LY_ADDRESS: u16 = 0xFF44;
+pub const LYC_ADDRESS: u16 = 0xFF45;
+pub const STAT_ADDRESS: u16 = 0xFF41;
